@@ -1,36 +1,297 @@
 
-title: "Project Name - Long version"
-short_title: "Project"
-subtitle: |
-   Template github repository that can be used e.g. for the publication of the code when submitting a paper. 
-   
-   GH Actions are set to:
-   
-   1. convert the ipynb to html, create an index html page and store all the pages in a separate branch, where they can be published as static website with github pages
-   2. create a README index file for the repo that contains all the links to the html and ipynb files.
-   
-   Feel free to fork it for "publishing" your own notebooks, and [contact me](mailto:matteo.bonfanti@fht.org) with suggestions for improvements.
+title: "hEGCLC paper"
+short_title: "hEGCLC paper"
+subtitle: 
+   Repository to collect the code used to analyze the scRNA-Seq and DNA methylation data for the paper ()[] 
+
+   Docker image for most of the single cell analysis (notebooks in folders from 00 to 05) can be retrieved via `docker pull alessiavalenti/transgenerationalhub:transgenerational-1.1.7`. 
 
 final: |
-   Here you can put some final remarks.
-   These will be appended at the end of the README / index page.
+
 
 pages:
 
-  Test Notebook:
-    notebook: "prova.ipynb"
-    description: |
-      This is a **test notebook**. A very basic example of notebook, just to exemplify how the
-      GitHub Actions defined in this repository work.
-      
-      If you want to add your own notebooks, just put the ipynb files in the root project folder and then
-      customize the "pages" section of the [config.yaml](https://github.com/matbonfanti/project-template/blob/main/resources/config.yaml)
-      file by including the notebooks that need to be indexed. The "notebook" attribute defines the name
-      of the ipynb file and the "description" attribute contains a descriptive string that will be
-      included in the README and html index.
+   00_ExplorationQC_DimRed_Clustering.ipynb:
+      notebook: "scRNASeq/00_Preprocessing/00_ExplorationQC_DimRed_Clustering.ipynb"
+      description: |
 
-  Test HTML File:
-    notebook: "prova2.html"
-    description: |
-      This is a **test HTML file**. This example shows how HTML files can be directly included in the 
-      final repository and linked from the repository index.
+   01a_CellsAnnotationMarkers.ipynb:
+      notebook: "scRNASeq/01_Annotation/01a_CellsAnnotationMarkers.ipynb"
+      description: |
+
+   01b_FunctionalEnrichment_Clusters.ipynb:
+      notebook: "scRNASeq/01_Annotation/01b_FunctionalEnrichment_Clusters.ipynb"
+      description: |
+
+   01c_CellCycle.ipynb:
+      notebook: "scRNASeq/01_Annotation/01c_CellCycle.ipynb"
+      description: |
+
+   02a_PseudoBulk_PCA.ipynb:
+      notebook: "scRNASeq/02_Pseudobulk/02a_PseudoBulk_PCA.ipynb"
+      description: |
+
+   02b_Pseudobulk_edgeR_topGO_hEGCLC_hPGCLC.ipynb:
+      notebook: "scRNASeq/02_Pseudobulk/02b_Pseudobulk_edgeR_topGO_hEGCLC_hPGCLC.ipynb"
+      description: |
+
+   02b_Pseudobulk_edgeR_topGO_hiPSC_hEGCLC.ipynb:
+      notebook: "scRNASeq/02_Pseudobulk/02b_Pseudobulk_edgeR_topGO_hiPSC_hEGCLC.ipynb"
+      description: |
+
+   02b_Pseudobulk_edgeR_topGO_hiPSC_hPGCLC.ipynb:
+      notebook: "scRNASeq/02_Pseudobulk/02b_Pseudobulk_edgeR_topGO_hiPSC_hPGCLC.ipynb"
+      description: |
+
+   02c_Comparisons_between_DEGs.ipynb:
+      notebook: "scRNASeq/02_Pseudobulk/02c_Comparisons_between_DEGs.ipynb"
+      description: |
+
+   02c_Comparisons_between_DEGs.ipynb:
+      notebook: "scRNASeq/02_Pseudobulk/02c_Comparisons_between_DEGs.ipynb"
+      description: |
+
+   03a_Chen_Processing_and_Annotation.ipynb:
+      notebook: "scRNASeq/03_Ingestion/03a_Chen_Processing_and_Annotation.ipynb"
+      description: |
+
+   03b_Ingest_Chen.ipynb:
+      notebook: "scRNASeq/03_Ingestion/03b_Ingest_Chen.ipynb"
+      description: |
+
+   03c_Fetal_Processing_and_Annotation.ipynb:
+      notebook: "scRNASeq/03_Ingestion/03c_Fetal_Processing_and_Annotation.ipynb"
+      description: |
+
+   03d_Ingest_FetalData.ipynb:
+      notebook: "scRNASeq/03_Ingestion/03d_Ingest_FetalData.ipynb"
+      description: |
+
+   04a_DEGs_patterns_AggClustering.ipynb:
+      notebook: "scRNASeq/04_edgeR_DEGs_inTime/04a_DEGs_patterns_AggClustering.ipynb"
+      description: |
+
+   05_TF_activity_inference.ipynb:
+      notebook: "scRNASeq/05_TF_analysis/05_TF_activity_inference.ipynb"
+      description: |
+
+   FuncEnrich_LeidenCluster_0:
+      notebook: "scRNASeq/01_Annotation/markers_in_cluster_tables/GO_cluster_0.html"
+      description: Functional enrichment of Leiden cluster 0 from clustering in notebook 01
+
+   FuncEnrich_LeidenCluster_1:
+      notebook: "scRNASeq/01_Annotation/markers_in_cluster_tables/GO_cluster_1.html"
+      description: Functional enrichment of Leiden cluster 1 from clustering in notebook 01
+
+   FuncEnrich_LeidenCluster_2:
+      notebook: "scRNASeq/01_Annotation/markers_in_cluster_tables/GO_cluster_2.html"
+      description: Functional enrichment of Leiden cluster 2 from clustering in notebook 01
+
+   FuncEnrich_LeidenCluster_3:
+      notebook: "scRNASeq/01_Annotation/markers_in_cluster_tables/GO_cluster_3.html"
+      description: Functional enrichment of Leiden cluster 3 from clustering in notebook 01
+
+   FuncEnrich_LeidenCluster_4:
+      notebook: "scRNASeq/01_Annotation/markers_in_cluster_tables/GO_cluster_4.html"
+      description: Functional enrichment of Leiden cluster 4 from clustering in notebook 01
+
+   FuncEnrich_LeidenCluster_5:
+      notebook: "scRNASeq/01_Annotation/markers_in_cluster_tables/GO_cluster_5.html"
+      description: Functional enrichment of Leiden cluster 5 from clustering in notebook 01
+
+   FuncEnrich_LeidenCluster_6:
+      notebook: "scRNASeq/01_Annotation/markers_in_cluster_tables/GO_cluster_6.html"
+      description: Functional enrichment of Leiden cluster 6 from clustering in notebook 01
+
+   FuncEnrich_LeidenCluster_7:
+      notebook: "scRNASeq/01_Annotation/markers_in_cluster_tables/GO_cluster_7.html"
+      description: Functional enrichment of Leiden cluster 7 from clustering in notebook 01
+
+   FuncEnrich_LeidenCluster_8:
+      notebook: "scRNASeq/01_Annotation/markers_in_cluster_tables/GO_cluster_8.html"
+      description: Functional enrichment of Leiden cluster 8 from clustering in notebook 01
+
+   FuncEnrich_LeidenCluster_9:
+      notebook: "scRNASeq/01_Annotation/markers_in_cluster_tables/GO_cluster_9.html"
+      description: Functional enrichment of Leiden cluster 9 from clustering in notebook 01
+
+   FuncEnrich_LeidenCluster_10:
+      notebook: "scRNASeq/01_Annotation/markers_in_cluster_tables/GO_cluster_10.html"
+      description: Functional enrichment of Leiden cluster 10 from clustering in notebook 01
+
+   FuncEnrich_LeidenCluster_11:
+      notebook: "scRNASeq/01_Annotation/markers_in_cluster_tables/GO_cluster_11.html"
+      description: Functional enrichment of Leiden cluster 11 from clustering in notebook 01
+
+   FuncEnrich_LeidenCluster_12:
+      notebook: "scRNASeq/01_Annotation/markers_in_cluster_tables/GO_cluster_12.html"
+      description: Functional enrichment of Leiden cluster 12 from clustering in notebook 01
+
+
+   FuncEnrich_LeidenCluster_1:
+      notebook: "scRNASeq/01_Annotation/markers_in_cluster_tables/GO_cluster_1.html"
+      description: Functional enrichment of Leiden cluster 1 from clustering in notebook 00
+
+   FuncEnrich_LeidenCluster_2:
+      notebook: "scRNASeq/01_Annotation/markers_in_cluster_tables/GO_cluster_2.html"
+      description: Functional enrichment of Leiden cluster 2 from clustering in notebook 00
+
+   FuncEnrich_LeidenCluster_3:
+      notebook: "scRNASeq/01_Annotation/markers_in_cluster_tables/GO_cluster_3.html"
+      description: Functional enrichment of Leiden cluster 3 from clustering in notebook 00
+
+   FuncEnrich_LeidenCluster_4:
+      notebook: "scRNASeq/01_Annotation/markers_in_cluster_tables/GO_cluster_4.html"
+      description: Functional enrichment of Leiden cluster 4 from clustering in notebook 00
+
+   FuncEnrich_LeidenCluster_5:
+      notebook: "scRNASeq/01_Annotation/markers_in_cluster_tables/GO_cluster_5.html"
+      description: Functional enrichment of Leiden cluster 5 from clustering in notebook 00
+
+   FuncEnrich_LeidenCluster_6:
+      notebook: "scRNASeq/01_Annotation/markers_in_cluster_tables/GO_cluster_6.html"
+      description: Functional enrichment of Leiden cluster 6 from clustering in notebook 00
+
+   FuncEnrich_LeidenCluster_7:
+      notebook: "scRNASeq/01_Annotation/markers_in_cluster_tables/GO_cluster_7.html"
+      description: Functional enrichment of Leiden cluster 7 from clustering in notebook 00
+
+   FuncEnrich_LeidenCluster_8:
+      notebook: "scRNASeq/01_Annotation/markers_in_cluster_tables/GO_cluster_8.html"
+      description: Functional enrichment of Leiden cluster 8 from clustering in notebook 00
+
+   FuncEnrich_LeidenCluster_9:
+      notebook: "scRNASeq/01_Annotation/markers_in_cluster_tables/GO_cluster_9.html"
+      description: Functional enrichment of Leiden cluster 9 from clustering in notebook 00
+
+   FuncEnrich_LeidenCluster_10:
+      notebook: "scRNASeq/01_Annotation/markers_in_cluster_tables/GO_cluster_10.html"
+      description: Functional enrichment of Leiden cluster 10 from clustering in notebook 00
+
+   FuncEnrich_LeidenCluster_11:
+      notebook: "scRNASeq/01_Annotation/markers_in_cluster_tables/GO_cluster_11.html"
+      description: Functional enrichment of Leiden cluster 11 from clustering in notebook 00
+
+   FuncEnrich_LeidenCluster_12:
+      notebook: "scRNASeq/01_Annotation/markers_in_cluster_tables/GO_cluster_12.html"
+      description: Functional enrichment of Leiden cluster 12 from clustering in notebook 00
+
+   FuncEnrich_GenesCluster_0:
+      notebook: "scRNASeq/04_edgeR_DEGs_inTime/html/GO_cluster_0.html"
+      description: Functional enrichment of genes in cluster 0 from clustering in notebook 04a
+
+   FuncEnrich_GenesCluster_1:
+      notebook: "scRNASeq/04_edgeR_DEGs_inTime/html/GO_cluster_1.html"
+      description: Functional enrichment of genes in cluster 1 from clustering in notebook 04a
+
+   FuncEnrich_GenesCluster_2:
+      notebook: "scRNASeq/04_edgeR_DEGs_inTime/html/GO_cluster_2.html"
+      description: Functional enrichment of genes in cluster 2 from clustering in notebook 04a
+
+   FuncEnrich_GenesCluster_3:
+      notebook: "scRNASeq/04_edgeR_DEGs_inTime/html/GO_cluster_3.html"
+      description: Functional enrichment of genes in cluster 3 from clustering in notebook 04a
+
+   FuncEnrich_GenesCluster_4:
+      notebook: "scRNASeq/04_edgeR_DEGs_inTime/html/GO_cluster_4.html"
+      description: Functional enrichment of genes in cluster 4 from clustering in notebook 04a
+
+   FuncEnrich_GenesCluster_5:
+      notebook: "scRNASeq/04_edgeR_DEGs_inTime/html/GO_cluster_5.html"
+      description: Functional enrichment of genes in cluster 5 from clustering in notebook 04a
+
+   FuncEnrich_GenesCluster_6:
+      notebook: "scRNASeq/04_edgeR_DEGs_inTime/html/GO_cluster_6.html"
+      description: Functional enrichment of genes in cluster 6 from clustering in notebook 04a
+
+   FuncEnrich_GenesCluster_7:
+      notebook: "scRNASeq/04_edgeR_DEGs_inTime/html/GO_cluster_7.html"
+      description: Functional enrichment of genes in cluster 7 from clustering in notebook 04a
+
+   FuncEnrich_GenesCluster_8:
+      notebook: "scRNASeq/04_edgeR_DEGs_inTime/html/GO_cluster_8.html"
+      description: Functional enrichment of genes in cluster 8 from clustering in notebook 04a
+
+   FuncEnrich_GenesCluster_9:
+      notebook: "scRNASeq/04_edgeR_DEGs_inTime/html/GO_cluster_9.html"
+      description: Functional enrichment of genes in cluster 9 from clustering in notebook 04a
+
+   FuncEnrich_GenesCluster_10:
+      notebook: "scRNASeq/04_edgeR_DEGs_inTime/html/GO_cluster_10.html"
+      description: Functional enrichment of genes in cluster 10 from clustering in notebook 04a
+
+   FuncEnrich_GenesCluster_11:
+      notebook: "scRNASeq/04_edgeR_DEGs_inTime/html/GO_cluster_11.html"
+      description: Functional enrichment of genes in cluster 11 from clustering in notebook 04a
+
+   FuncEnrich_GenesCluster_12:
+      notebook: "scRNASeq/04_edgeR_DEGs_inTime/html/GO_cluster_12.html"
+      description: Functional enrichment of genes in cluster 12 from clustering in notebook 04a
+
+   FuncEnrich_GenesCluster_13:
+      notebook: "scRNASeq/04_edgeR_DEGs_inTime/html/GO_cluster_13.html"
+      description: Functional enrichment of genes in cluster 13 from clustering in notebook 04a
+
+   FuncEnrich_GenesCluster_14:
+      notebook: "scRNASeq/04_edgeR_DEGs_inTime/html/GO_cluster_14.html"
+      description: Functional enrichment of genes in cluster 14 from clustering in notebook 04a
+
+   PreliminaryExploration:
+      notebook: "EMSeq/1.ExploratoryAnalysis/PreliminaryExploration.html"
+      description: |
+
+   DMRCalling:
+      notebook: "EMSeq/2.DifferentialAnalysis/DMRCalling.html"
+      description: |
+
+   TwistBedAnnotation:
+      notebook: "EMSeq/3.TwistRegionAnnotation/TwistBedAnnotation.html"
+      description: |
+
+   DMRAnnotation:
+      notebook: "EMSeq/4.DMRAnnotation/DMRAnnotation.html"
+      description: |
+
+   DMRplots:
+      notebook: "EMSeq/5.DMRInterpretation/DMRVisualization/DMRplots.html"
+      description: |
+
+   TopGO_hiPSCs_vs_hPGCLCs_all:
+      notebook: "EMSeq/5.DMRInterpretation/TopGO/TopGO_hiPSCs_vs_hPGCLCs_all.html"
+      description: |
+
+   TopGO_iMeLCs_vs_hPGCLCs_all:
+      notebook: "EMSeq/5.DMRInterpretation/TopGO/TopGO_iMeLCs_vs_hPGCLCs_all.html"
+      description: |
+
+   TopGO_hEGCLCs_vs_hiPSCs_all:
+      notebook: "EMSeq/5.DMRInterpretation/TopGO/TopGO_hEGCLCs_vs_hiPSCs_all.html"
+      description: |
+
+   TopGO_hEGCLCs_vs_hPGCLCs_all:
+      notebook: "EMSeq/5.DMRInterpretation/TopGO/TopGO_hEGCLCs_vs_hPGCLCs_all.html"
+      description: |
+
+   Heatmaps_imprinted_regions:
+      notebook: "EMSeq/6.ImprintedExploration/Heatmaps_imprinted_regions.html"
+      description: |
+
+   DMRplots_imprinted_regions:
+      notebook: "EMSeq/6.ImprintedExploration/DMRplots_imprinted_regions.html"
+      description: |
+
+   1.EscapeeBsseqGeneration:
+      notebook: "EMSeq/7.EscapeesExploration/1.EscapeeBsseqGeneration.html"
+      description: |
+
+   2.EscapeeAnnotationAndFunctional:
+      notebook: "EMSeq/7.EscapeesExploration/2.EscapeeAnnotationAndFunctional.html"
+      description: |
+
+   3.EscapeeHeatmaps:
+      notebook: "EMSeq/7.EscapeesExploration/3.EscapeeHeatmaps.html"
+      description: |
+
+   4.EscapeesvsNonEscapees:
+      notebook: "EMSeq/7.EscapeesExploration/4.EscapeesvsNonEscapees.html"
+      description: |

@@ -1,0 +1,472 @@
+---
+title: "TopGO - all genomic regions"
+author: "Gaja Matassa"
+date: 'Date: `r format(Sys.Date(), "%B %d, %Y")`'
+output:
+    html_document:
+        toc: true
+        toc_float: true
+        theme: 'yeti'
+        highlight: 'kate'
+        code_folding: hide
+params: 
+    DMRAnnotated: '~/DataDir/4.DMRAnnotated/DMRsAnnotated_final.rds'
+    GeneUniverse: '~/DataDir/4.DMRAnnotated/GeneUniverse.rds'
+
+    OutputFolder: NULL
+    TopGO: 'BP_MF_CC' #GO domains
+    
+    GoEnTh: 2 #enrichment threshold for TopGO results
+    GoPvalTh: 0.01 #pval threshold for TopGO results
+    
+    Condition_1: ''
+    Condition_2: ''
+---
+
+```{r, collapse=TRUE}
+knitr::opts_chunk$set(echo = TRUE, collapse = TRUE, warning = FALSE)
+
+Condition_1 <- params$Condition_1
+Condition_2 <- params$Condition_2
+```
+
+__Top GO Analysis for `r Condition_1` vs `r Condition_2`__
+
+**For this functional we will focus only on ALL differentially methylated genomic regions of protein coding genes!**
+
+## 1. Environment Set Up
+
+```{r EnvironmentSetupII, collapse=TRUE}
+library(DT)
+library(ggplot2)
+library(AnnotationDbi)
+library(org.Hs.eg.db)
+library(gridExtra)
+library(RColorBrewer)
+library(viridis)
+library(topGO)
+library(data.table)
+library(tidyr)
+library(dplyr)
+
+source("TopGO_helper_meth.R")
+```
+
+
+```{r FolderSetting}
+OutputFolder <- ifelse(is.null(params$OutputFolder), getwd(), params$OutputFolder) 
+
+
+if (dir.exists(OutputFolder) == FALSE) {
+  dir.create(OutputFolder, recursive=TRUE)
+}
+
+```
+****
+
+## 2. Data Load  
+
+```{r Data, collapse=TRUE}
+DMRAnnotated <- readRDS(params$DMRAnnotated)
+GeneUniverse_df <- readRDS(params$GeneUniverse)
+```
+
+
+```{r, collapse=TRUE}
+GeneUniverse_df_protein_coding <- GeneUniverse_df[GeneUniverse_df$gene_biotype %in% "protein_coding",]
+GeneUniverse <- unique(GeneUniverse_df_protein_coding$hgnc_symbol)
+```
+
+We have `r length(GeneUniverse)` protein-coding genes in the universe.
+
+Saving of selected DMRs
+
+```{r, collapse=TRUE}
+DMReg <- DMRAnnotated[[paste0(Condition_1,"vs",Condition_2)]]
+DMReg <- DMReg %>% filter(gene_biotype == "protein_coding")
+```
+
+****
+
+
+## 3. TOPGO for Gene Ontology Enrichment analysis
+
+Gene ontology enrichment analysis is performed on the set of DMGs (Differentially Methylates Genes) using TopGO with Fisher statistics and weight01 algorithm.
+DMGs are now splitted in down- and up-methylated.
+
+
+### 3.1 Selection of modulated genes and generation of gene vectors
+
+I generate vectors for the gene universe, all modulated genes, up-meth genes and down-meth genes in the format required by TopGO.
+
+```{r TopGOSetI}
+GeneVectors <- topGOGeneVectors_meth(DMRAnnotated, Cond1 = Condition_1, Cond2 = Condition_2, genomic_type = "all", gene_type = "protein_coding", Universe = GeneUniverse)
+```
+
+Therefore:
+
+ * universe genes: __`r length(GeneVectors$DMGenes)`__ genes
+ * modulated genes: __`r table(GeneVectors$DMGenes)['1']`__ genes
+ * down-methylated genes:  __`r table(GeneVectors$DMGenesDown)['1']`__  genes of interest
+ * up-methylated genes:  __`r table(GeneVectors$DMGenesUp)['1']`__ genes of interest
+ 
+**N.B.:** The sum of down- and up- methylated genes is > the number of modulated genes because some genes are shared between up and down lists. This is because for example in a promoter of a gene meth can be higher for a cell type and in the gene body of the same gene meth can be higher for the other cell type!
+
+```{r TopGOSetII}
+BpEval <- ifelse(length(grep('BP', params$TopGO))!=0, TRUE, FALSE)
+MfEval <- ifelse(length(grep('MF', params$TopGO))!=0, TRUE, FALSE)
+CcEval <- ifelse(length(grep('CC', params$TopGO))!=0, TRUE, FALSE)
+```
+
+### 3.2 TopGO analysis: Biological Process
+
+On the basis of the analysis settings, the enrichment for Biological Process __`r ifelse(BpEval==TRUE, 'IS', 'IS NOT')` performed__.
+
+#### __Biological Process Analysis for ALL modulated genes__: `r length(GeneVectors$DMGenes[GeneVectors$DMGenes==1])` genes
+
+```{r BPAll, eval=BpEval, collapse=TRUE}
+# I generate a list that contains the association between each gene and the GO terms that are associated to it
+BPann <- topGO::annFUN.org(whichOnto="BP", feasibleGenes=names(GeneVectors$DMGenes), 
+                           mapping="org.Hs.eg.db", ID="symbol") %>% inverseList()
+
+# Wrapper function for topGO analysis 
+ResBPAll <- topGOResults_new(Genes=GeneVectors$DMGenes, gene2GO=BPann, ontology='BP', 
+                         desc=NULL, nodeSize=15, algorithm='weight01', statistic='fisher', 
+                         EnTh=params$GoEnTh, PvalTh=params$GoPvalTh, minTerms=12, geneTh=4,
+                         saveRes=TRUE, outDir=paste0(OutputFolder), fileName='BPAll', maxAnn = 500)
+```
+
+#### __Biological Process Analysis for DOWN-METHYLATED genes__: `r length(GeneVectors$DMGenesDown[GeneVectors$DMGenesDown==1])` genes
+
+```{r BPDown, eval=BpEval, collapse=TRUE}
+# Wrapper function for topGO analysis 
+ResBPDown <- topGOResults_new(Genes=GeneVectors$DMGenesDown, gene2GO=BPann, ontology='BP', 
+                          desc=NULL, nodeSize=15, algorithm='weight01', statistic='fisher', 
+                          EnTh=params$GoEnTh, PvalTh=params$GoPvalTh, minTerms=12, geneTh=4,
+                          saveRes=TRUE, outDir=paste0(OutputFolder), fileName='BPDown', maxAnn = 500)
+
+# Selection on enrichment of at least 2 is implemented (also to avoid depleted categories). Then categories are ranked by PVal and all the ones with Pval < th are selected. If the number is < minTerms, othter terms are included to reach the minimum number. 
+```
+
+#### __Biological Process Analysis for UP-METHYLATED genes__: `r length(GeneVectors$DMGenesUp[GeneVectors$DMGenesUp==1])` genes
+
+```{r BPUp, eval=BpEval, collapse=TRUE}
+ResBPUp <- topGOResults_new(Genes=GeneVectors$DMGenesUp, gene2GO=BPann, ontology='BP', 
+                        desc=NULL, nodeSize=15, algorithm='weight01', statistic='fisher', 
+                        EnTh=params$GoEnTh, PvalTh=params$GoPvalTh, minTerms=12, geneTh=4,
+                        saveRes=TRUE, outDir=OutputFolder, fileName='BPUp', maxAnn = 500)
+```
+
+#### __Result visualization: Barplot__
+
+```{r}
+nterms=15
+cols <- c(All='forestgreen', Down='blue', Up='red')
+pals <- lapply(cols, {function(el) grDevices::colorRampPalette(c('gold', el))(nterms)})
+```
+
+```{r BPBarplot_all, eval=BpEval, collapse=TRUE, fig.height=8.5, fig.width=9, fig.path=OutputFolder}
+if(nrow(ResBPAll$ResSel)>0){
+  topGOBarplot_new(TopGORes=ResBPAll$ResSel, terms=nterms, pvalTh=0.01, plotTitle=paste0("All DMGenes - ", Condition_2, " vs ", Condition_1),
+                             palette=pals$All, flip_x=FALSE)
+}  
+```
+
+```{r BPBarplot_down, eval=BpEval, collapse=TRUE, fig.height=8.5, fig.width=9, fig.path=OutputFolder}
+if(nrow(ResBPDown$ResSel)>0){
+  topGOBarplot_new(TopGORes=ResBPDown$ResSel, terms=nterms, pvalTh=0.01, plotTitle=paste0("Down-methylated genes (associated to DMRs where methylation is lower in ", Condition_2, ")"),
+                             palette=pals$Down, flip_x=FALSE)
+}
+```
+
+```{r BPBarplot_up, eval=BpEval, collapse=TRUE, fig.height=8.5, fig.width=9, fig.path=OutputFolder}
+if(nrow(ResBPUp$ResSel)>0){
+  topGOBarplot_new(TopGORes=ResBPUp$ResSel, terms=nterms, pvalTh=0.01, plotTitle=paste0("Up-methylated genes (associated to DMRs where methylation is higher in ", Condition_2, ")"),
+                             palette=pals$Up, flip_x=TRUE)
+}
+```
+
+```{r BPBarplot, eval=BpEval, collapse=TRUE, fig.height=8.5, fig.width=16, fig.path=OutputFolder}
+if(nrow(ResBPAll$ResSel)>0 && nrow(ResBPDown$ResSel)>0 && nrow(ResBPUp$ResSel)>0){
+  topGOBarplotAll_new(TopGOResAll=ResBPAll$ResSel, TopGOResDown=ResBPDown$ResSel, TopGOResUp=ResBPUp$ResSel, 
+                terms=nterms, pvalTh=0.01, plotTitle="TopGO analysis of DMGs - ")
+}
+```
+
+#### __Result visualization: Bubbleplot__
+
+```{r BPBubbleplot_all, eval=BpEval, collapse=TRUE, fig.height=4, fig.width=10, fig.path=OutputFolder}
+if(nrow(ResBPAll$ResSel)>0){
+  bubbleplot(ResBPAll$ResSel, terms=nterms, Ont = "BP", pvalTh=0.01, plotTitle="TopGO analysis of DMGs - All")
+  }
+```
+
+```{r BPBubbleplot_down, eval=BpEval, collapse=TRUE, fig.height=4, fig.width=10, fig.path=OutputFolder}
+if(nrow(ResBPDown$ResSel)>0){
+  bubbleplot(ResBPDown$ResSel, terms=nterms, Ont = "BP", pvalTh=0.01, plotTitle="TopGO analysis of DMGs - Down", fillCol = "blue")
+  }
+```
+
+```{r BPBubbleplot_up, eval=BpEval, collapse=TRUE, fig.height=4, fig.width=10, fig.path=OutputFolder}
+if(nrow(ResBPUp$ResSel)>0){
+  bubbleplot(ResBPUp$ResSel, terms=nterms, Ont = "BP", pvalTh=0.01, plotTitle="TopGO analysis of DMGs - Up", fillCol = "red")
+  }
+```
+
+#### __Result visualization: Top genes in top GO terms__
+
+```{r genesInTerm_BP, collapse=TRUE, fig.width=15, fig.height=5, fig.path=OutputFolder}
+if(nrow(ResBPAll$ResSel)>0){
+  plotGenesInTerm_v2(ResBPAll$ResSel, ResBPAll$GOdata, DMRs = DMReg, nterms=nterms, ngenes=12, plotTitle="Top genes in top GO terms - All", Interactive=FALSE)
+}
+```
+
+
+```{r genesInTerm_BPDown, collapse=TRUE, fig.width=15, fig.height=5, fig.path=OutputFolder}
+if(nrow(ResBPDown$ResSel)>0){
+  plotGenesInTerm_v2(ResBPDown$ResSel, ResBPAll$GOdata, DMRs = DMReg, nterms=nterms, ngenes=12, plotTitle="Top genes in top GO terms - Down", Interactive=FALSE, fillCol='blue')
+}  
+```
+
+
+```{r genesInTerm_BPUp, collapse=TRUE, fig.width=15, fig.height=5, fig.path=OutputFolder}
+if(nrow(ResBPUp$ResSel)>0){
+  plotGenesInTerm_v2(ResBPUp$ResSel, ResBPAll$GOdata, DMRs = DMReg, nterms=nterms, ngenes=12, plotTitle="Top genes in top GO terms - Up", Interactive=FALSE, fillCol='red')
+}
+```
+
+### 3.3 TopGO analysis: Molecular Function
+
+On the basis of the analysis settings, the enrichment for Molecular Function __`r ifelse(MfEval==TRUE, 'IS', 'IS NOT')` performed__.
+
+#### __Molecular Function Enrichment for ALL modulated genes__: `r length(GeneVectors$DMGenes[GeneVectors$DMGenes==1])` genes
+
+```{r MFAll, eval=MfEval, collapse=TRUE}
+# I generate a list that contains the association between each gene and the GO terms that are associated to it
+MFann <- topGO::annFUN.org(whichOnto='MF', feasibleGenes=names(GeneVectors$DMGenes), 
+                           mapping='org.Hs.eg.db', ID='symbol') %>% inverseList()
+
+# Wrapper function for topGO analysis 
+ResMFAll <- topGOResults_new(Genes=GeneVectors$DMGenes, gene2GO=MFann, ontology='MF', 
+                         desc=NULL, nodeSize=15, algorithm='weight01', statistic='fisher', 
+                         EnTh=params$GoEnTh, PvalTh=params$GoPvalTh, minTerms=12, geneTh=4,
+                         saveRes=TRUE, outDir=OutputFolder, fileName='MFAll', maxAnn = 500)
+```
+
+
+
+#### __Molecular Function Enrichment for DOWN-METHYLATED genes__: `r length(GeneVectors$DMGenesDown[GeneVectors$DMGenesDown==1])` genes
+
+```{r MFDown, eval=MfEval, collapse=TRUE}
+ResMFDown <- topGOResults_new(Genes=GeneVectors$DMGenesDown, gene2GO=MFann, ontology='MF', 
+                          desc=NULL, nodeSize=15, algorithm='weight01', statistic='fisher', 
+                          EnTh=params$GoEnTh, PvalTh=params$GoPvalTh, minTerms=12, geneTh=4,
+                          saveRes=TRUE, outDir=OutputFolder, fileName='MFDown', maxAnn = 500)
+```
+
+#### __Molecular Function Analysis for UP-METHYLATED genes__: `r length(GeneVectors$DMGenesUp[GeneVectors$DMGenesUp==1])` genes
+
+```{r MFUp, eval=MfEval, collapse=TRUE}
+ResMFUp <- topGOResults_new(Genes=GeneVectors$DMGenesUp, gene2GO=MFann, ontology='MF', 
+                        desc=NULL, nodeSize=15, algorithm='weight01', statistic='fisher', 
+                        EnTh=params$GoEnTh, PvalTh=params$GoPvalTh, minTerms=12, geneTh=4,
+                        saveRes=TRUE, outDir=OutputFolder, fileName='MFUp', maxAnn = 500)
+```
+
+#### __Result visualization: Barplot__
+
+```{r MFBarplot_all, eval=MfEval, collapse=TRUE, fig.height=8.5, fig.width=9, fig.path=OutputFolder}
+if(nrow(ResMFAll$ResSel)>0){
+  topGOBarplot_new(TopGORes=ResMFAll$ResSel, terms=nterms, pvalTh=0.01, plotTitle=paste0("All DMGenes - ", Condition_2, " vs ", Condition_1),
+                             palette=pals$All, flip_x=FALSE)
+} 
+```
+
+```{r MFBarplot_down, eval=MfEval, collapse=TRUE, fig.height=8.5, fig.width=9, fig.path=OutputFolder}
+if(nrow(ResMFDown$ResSel)>0){
+  topGOBarplot_new(TopGORes=ResMFDown$ResSel, terms=nterms, pvalTh=0.01, plotTitle=paste0("Down-methylated genes (associated to DMRs where methylation is lower in ", Condition_2, ")"),
+                             palette=pals$Down, flip_x=FALSE)
+}  
+```
+
+```{r MFBarplot_up, eval=MfEval, collapse=TRUE, fig.height=8.5, fig.width=9, fig.path=OutputFolder}
+if(nrow(ResMFUp$ResSel)>0){
+  topGOBarplot_new(TopGORes=ResMFUp$ResSel, terms=nterms, pvalTh=0.01, plotTitle=paste0("Up-methylated genes (associated to DMRs where methylation is higher in ", Condition_2, ")"),
+                             palette=pals$Up, flip_x=TRUE)
+}
+```
+
+```{r MFBarplot, eval=MfEval, collapse=TRUE, fig.height=8.5, fig.width=16, fig.path=OutputFolder}
+if(nrow(ResMFAll$ResSel)>0 && nrow(ResMFDown$ResSel)>0 && nrow(ResMFUp$ResSel)>0){
+  topGOBarplotAll_new(TopGOResAll=ResMFAll$ResSel, TopGOResDown=ResMFDown$ResSel, TopGOResUp=ResMFUp$ResSel, 
+                terms=nterms, pvalTh=0.01, plotTitle= "TopGO analysis of DMGs - ")
+}  
+```
+
+#### __Result visualization: Bubbleplot__
+
+```{r MFBubbleplot_all, eval=MfEval, collapse=TRUE, fig.height=4, fig.width=10, fig.path=OutputFolder}
+if(nrow(ResMFAll$ResSel)>0){
+  bubbleplot(ResMFAll$ResSel, terms=nterms, Ont = "MF", pvalTh=0.01, plotTitle="TopGO analysis of DMGs - All")
+  }
+```
+
+```{r MFBubbleplot_down, eval=MfEval, collapse=TRUE, fig.height=4, fig.width=10, fig.path=OutputFolder}
+if(nrow(ResMFDown$ResSel)>0){
+  bubbleplot(ResMFDown$ResSel, terms=nterms, Ont = "MF", pvalTh=0.01, plotTitle="TopGO analysis of DMGs - Down", fillCol = "blue")
+  }
+```
+
+```{r MFBubbleplot_up, eval=MfEval, collapse=TRUE, fig.height=4, fig.width=10, fig.path=OutputFolder}
+if(nrow(ResMFUp$ResSel)>0){
+  bubbleplot(ResMFUp$ResSel, terms=nterms, Ont = "MF", pvalTh=0.01, plotTitle="TopGO analysis of DMGs - Up", fillCol = "red")
+  }
+```
+
+#### __Result visualization: Top genes in top GO terms__
+
+```{r genesInTerm_MF, collapse=TRUE, fig.width=15, fig.height=5, fig.path=OutputFolder}
+if(nrow(ResMFAll$ResSel)>0){
+  plotGenesInTerm_v2(ResMFAll$ResSel, ResMFAll$GOdata, DMRs = DMReg, nterms=nterms, ngenes=12, plotTitle="Top genes in top GO terms - All", Interactive=FALSE)
+}
+```
+
+
+```{r genesInTerm_MFDown, collapse=TRUE, fig.width=15, fig.height=5, fig.path=OutputFolder}
+if(nrow(ResMFDown$ResSel)>0){
+  plotGenesInTerm_v2(ResMFDown$ResSel, ResMFAll$GOdata, DMRs = DMReg, nterms=nterms, ngenes=12, plotTitle="Top genes in top GO terms - Down", Interactive=FALSE, fillCol='blue')
+}  
+```
+
+
+```{r genesInTerm_MFUp, collapse=TRUE, fig.width=15, fig.height=5, fig.path=OutputFolder}
+if(nrow(ResMFUp$ResSel)>0){
+  plotGenesInTerm_v2(ResMFUp$ResSel, ResMFAll$GOdata, DMRs = DMReg, nterms=nterms, ngenes=12, plotTitle="Top genes in top GO terms - Up", Interactive=FALSE, fillCol='red')
+}
+```
+
+### 3.4 TopGO analysis: Cellular Component
+
+On the basis of the analysis settings, the enrichment for Cellular Component __`r ifelse(CcEval==TRUE, 'IS', 'IS NOT')`__ performed.
+
+#### __Cellular Component Enrichment for ALL modulated genes__: `r length(GeneVectors$DMGenes[GeneVectors$DMGenes==1])` genes
+
+```{r CCAll, eval=CcEval, collapse=TRUE}
+# I generate a list that contains the association between each gene and the GO terms that are associated to it
+CCann <- topGO::annFUN.org(whichOnto='CC', feasibleGenes=names(GeneVectors$DMGenes), 
+                           mapping='org.Hs.eg.db', ID='symbol') %>% inverseList()
+
+# Wrapper function for topGO analysis 
+ResCCAll <- topGOResults_new(Genes=GeneVectors$DMGenes, gene2GO=CCann, ontology='CC', 
+                         desc=NULL, nodeSize=15, algorithm='weight01', statistic='fisher', 
+                         EnTh=params$GoEnTh, PvalTh=params$GoPvalTh, minTerms=12, geneTh=4,
+                         saveRes=TRUE, outDir=OutputFolder, fileName='CCAll', maxAnn = 500)
+```
+
+
+#### __Cellular Component Enrichment for DOWN-METHYLATED genes__: `r length(GeneVectors$DMGenesDown[GeneVectors$DMGenesDown==1])` genes
+
+```{r CCDown, eval=CcEval, collapse=TRUE}
+# Wrapper function for topGO analysis 
+ResCCDown <- topGOResults_new(Genes=GeneVectors$DMGenesDown, gene2GO=CCann, ontology='CC', 
+                          desc=NULL, nodeSize=15, algorithm='weight01', statistic='fisher', 
+                          EnTh=params$GoEnTh, PvalTh=params$GoPvalTh, minTerms=12, geneTh=4,
+                          saveRes=TRUE, outDir=OutputFolder, fileName='CCDown', maxAnn = 500)
+```
+
+#### __Cellular Component Analysis for UP-METHYLATED genes__: `r length(GeneVectors$DMGenesUp[GeneVectors$DMGenesUp==1])` genes
+
+```{r CCUp, eval=CcEval, collapse=TRUE}
+# Wrapper function for topGO analysis 
+ResCCUp <- topGOResults_new(Genes=GeneVectors$DMGenesUp, gene2GO=CCann, ontology='CC', 
+                        desc=NULL, nodeSize=15, algorithm='weight01', statistic='fisher', 
+                        EnTh=params$GoEnTh, PvalTh=params$GoPvalTh, minTerms=12, geneTh=4,
+                        saveRes=TRUE, outDir=OutputFolder, fileName='CCUp', maxAnn = 500)
+```
+
+#### __Result visualization: Barplot__
+
+```{r CCBarplot_all, eval=CcEval, collapse=TRUE, fig.height=8.5, fig.width=9, fig.path=OutputFolder}
+if(nrow(ResCCAll$ResSel)>0){
+  topGOBarplot_new(TopGORes=ResCCAll$ResSel, terms=nterms, pvalTh=0.01, plotTitle=paste0("All DMGenes - ", Condition_2, " vs ", Condition_1),
+                             palette=pals$All, flip_x=FALSE)
+}  
+```
+
+```{r CCBarplot_down, eval=CcEval, collapse=TRUE, fig.height=8.5, fig.width=9, fig.path=OutputFolder}
+if(nrow(ResCCDown$ResSel)>0){
+  topGOBarplot_new(TopGORes=ResCCDown$ResSel, terms=nterms, pvalTh=0.01, plotTitle=paste0("Down-methylated genes (associated to DMRs where methylation is lower in ", Condition_2, ")"),
+                             palette=pals$Down, flip_x=FALSE)
+}
+```
+
+```{r CCBarplot_up, eval=CcEval, collapse=TRUE, fig.height=8.5, fig.width=9, fig.path=OutputFolder}
+if(nrow(ResCCUp$ResSel)>0){
+  topGOBarplot_new(TopGORes=ResCCUp$ResSel, terms=nterms, pvalTh=0.01, plotTitle=paste0("Up-methylated genes (associated to DMRs where methylation is higher in ", Condition_2, ")"), palette=pals$Up, flip_x=TRUE)
+}
+```
+
+
+```{r CCBarplot, eval=CcEval, collapse=TRUE, fig.height=8.5, fig.width=16, fig.path=OutputFolder}
+if(nrow(ResCCAll$ResSel)>0 && nrow(ResCCDown$ResSel)>0 && nrow(ResCCUp$ResSel)>0){
+  topGOBarplotAll_new(TopGOResAll=ResCCAll$ResSel, TopGOResDown=ResCCDown$ResSel, TopGOResUp=ResCCUp$ResSel, terms=nterms, pvalTh=0.01, plotTitle="TopGO analysis of DMGs - ")
+}
+```
+
+#### __Result visualization: Bubbleplot__
+
+```{r CCBubbleplot_all, eval=CcEval, collapse=TRUE, fig.height=4, fig.width=10, fig.path=OutputFolder}
+if(nrow(ResCCAll$ResSel)>0){
+  bubbleplot(ResCCAll$ResSel, terms=nterms, Ont = "CC", pvalTh=0.01, plotTitle="TopGO analysis of DMGs - All")
+  }
+```
+
+```{r CCBubbleplot_down, eval=CcEval, collapse=TRUE, fig.height=4, fig.width=10, fig.path=OutputFolder}
+if(nrow(ResCCDown$ResSel)>0){
+  bubbleplot(ResCCDown$ResSel, terms=nterms, Ont = "CC", pvalTh=0.01, plotTitle="TopGO analysis of DMGs - Down", fillCol = "blue")
+  }
+```
+
+```{r CCBubbleplot_up, eval=CcEval, collapse=TRUE, fig.height=4, fig.width=10, fig.path=OutputFolder}
+if(nrow(ResCCUp$ResSel)>0){
+  bubbleplot(ResCCUp$ResSel, terms=nterms, Ont = "CC", pvalTh=0.01, plotTitle="TopGO analysis of DMGs - Up", fillCol = "red")
+  }
+```
+
+#### __Result visualization: Top genes in top GO terms__
+
+```{r genesInTerm_CC, collapse=TRUE, fig.width=15, fig.height=5, fig.path=OutputFolder}
+if(nrow(ResCCAll$ResSel)>0){
+  plotGenesInTerm_v2(ResCCAll$ResSel, ResCCAll$GOdata, DMRs = DMReg, nterms=nterms, ngenes=12, plotTitle="Top genes in top GO terms - All", Interactive=FALSE)
+}
+```
+
+
+```{r genesInTerm_CCDown, collapse=TRUE, fig.width=15, fig.height=5, fig.path=OutputFolder}
+if(nrow(ResCCDown$ResSel)>0){
+  plotGenesInTerm_v2(ResCCDown$ResSel, ResCCAll$GOdata, DMRs = DMReg, nterms=nterms, ngenes=12, plotTitle="Top genes in top GO terms - Down", Interactive=FALSE, fillCol='blue')
+}  
+```
+
+
+```{r genesInTerm_CCUp, collapse=TRUE, fig.width=15, fig.height=5, fig.path=OutputFolder}
+if(nrow(ResCCUp$ResSel)>0){
+  plotGenesInTerm_v2(ResCCUp$ResSel, ResCCAll$GOdata, DMRs = DMReg, nterms=nterms, ngenes=12, plotTitle="Top genes in top GO terms - Up", Interactive=FALSE, fillCol='red')
+}
+```
+
+****
+
+### 4. Savings
+
+Most of the useful information has been saved during the analysis. Here I save the workspace and information about the session.
+
+```{r SaveSession}
+SessionInfo <- sessionInfo()
+Date <- date()
+```
+
+```{r}
+Date
+SessionInfo
+```

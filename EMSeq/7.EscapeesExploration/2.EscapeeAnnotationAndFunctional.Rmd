@@ -1,0 +1,393 @@
+---
+title: "Annotation of escapee CpGs"
+author: "Gaja Matassa"
+date: 'Date: `r format(Sys.Date(), "%B %d, %Y")`'
+output:
+    html_document:
+        toc: true
+        toc_float: true
+        theme: 'united'
+        highlight: 'kate'
+        code_folding: hide
+params: 
+
+    InputFolder: '~/DataDir/7.EscapeesExploration/Output/EscapeeBsseq/'
+    TwistAnnotated: '~/DataDir/3.TwistBedAnn/TwistAnnotated.rds'
+    TopGO: 'BP_MF_CC' #GO domains
+    GoEnTh: 2 #enrichment threshold for TopGO results
+    GoPvalTh: 0.01 #pval threshold for TopGO results
+    OutputFolder: '~/DataDir/7.EscapeesExploration/Output/EscapeesAnnotationAndFunctional/'
+---
+
+# 1. Environment setting
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, collapse = TRUE)
+```
+
+```{r, collapse=TRUE}
+library(plotly)
+library(ggplot2)
+library(dplyr)
+library(scales)
+library(gridExtra)
+library(ChIPseeker)
+library(org.Hs.eg.db)
+library(DT)
+library(data.table)
+library(AnnotationDbi)
+library(RColorBrewer)
+library(viridis)
+library(topGO)
+source("../5.DMRInterpretation/TopGO/TopGO_helper_meth.R")
+GTFFile <- "~/DataDir/3.TwistBedAnn/Input/gencode.v35.annotation.gtf.gz"
+txdb_v35 <- GenomicFeatures::makeTxDbFromGFF(GTFFile, format="gtf")
+```
+
+```{r, collapse=TRUE}
+InputFolder <- params$InputFolder
+OutputFolder <- params$OutputFolder
+```
+
+# 2. Loading data
+
+## 2.1 BSSeq object
+
+Loading of bsseq object of escapees generated in 2.Exploration_escapees.Rmd
+
+```{r, collapse=TRUE}
+bsseq_obj_escapees <- readRDS(paste0(params$InputFolder, "bsseq_obj_escapees.rds"))
+```
+
+## 2.2 Gene universe (genes annotated to twist bait regions)
+
+```{r}
+TwistAnnotated <- readRDS(params$TwistAnnotated)
+TwistAnnotated %>% head()
+```
+
+```{r}
+Genes_df <- TwistAnnotated[, c("ensembl_gene_id_version", "ensembl_gene_id", "hgnc_symbol", "gene_biotype")] %>% dplyr::distinct()%>%filter(!is.na(hgnc_symbol))%>%filter(!hgnc_symbol%in%"")
+rownames(Genes_df) <- NULL
+```
+
+These are the genes with the same symbol but different ensembl id
+
+```{r}
+Genes_df[Genes_df$hgnc_symbol%in%Genes_df[duplicated(Genes_df$hgnc_symbol), "hgnc_symbol"],]
+```
+
+```{r}
+Genes_df$entrez_gene_id <- as.vector(mapIds(org.Hs.eg.db, Genes_df$hgnc_symbol, column = "ENTREZID", keytype = "SYMBOL"))
+```
+
+```{r}
+nrow(Genes_df[is.na(Genes_df$entrez_gene_id),]) #number of genes without an entrez id
+```
+
+```{r}
+GeneUniverse_symbol <- unique(Genes_df$hgnc_symbol)
+GeneUniverse_entrezid <- na.omit(unique(Genes_df$entrez_gene_id))
+```
+
+### 3. Escapee CpG annotation and visualization with __`ChIPseeker`__
+
+CpGs are now annotated to their associated genes and genomic regions using the `annotatePeaks` function of the `ChIPseeker `R package, using a TxDb object. The [`GenomicFeatures`](https://bioconductor.org/packages/devel/bioc/vignettes/GenomicFeatures/inst/doc/GenomicFeatures.html) package uses `TxDb` objects to store transcript metadata. This class maps the 5’ and 3’ untranslated regions (UTRs), protein coding sequences (CDSs) and exons for a set of mRNA transcripts to their associated genome. 
+All `TxDb` objects are backed by a SQLite database that manages genomic locations and the relationships between pre-processed mRNA transcripts, exons, protein coding sequences, and their related gene identifiers.
+
+**TxDb created by us**
+
+Remember that bsseq_obj_escapees (and bsseq_obj_NonEscapees) have 1-based positions
+```{r}
+bsseq_obj_escapees
+```
+
+```{r}
+granges(bsseq_obj_escapees)
+```
+
+```{r, collapse=TRUE}
+EscapeeAnno <- annotatePeak(
+  granges(bsseq_obj_escapees),
+  tssRegion = c(-3000, 3000),
+  TxDb = txdb_v35,
+  level = "transcript", #level = "gene"
+  assignGenomicAnnotation = TRUE,
+  genomicAnnotationPriority = c("Promoter", "5UTR", "3UTR", "Exon", "Intron",
+    "Downstream", "Intergenic"),
+  overlap = "TSS",
+  verbose = TRUE,
+  columns = c("ENTREZID", "ENSEMBL", "SYMBOL", "GENENAME")
+)
+```
+
+```{r, collapse=TRUE}
+ChIPseeker::plotAnnoBar(EscapeeAnno)
+```
+
+```{r, collapse=TRUE}
+ChIPseeker::plotAnnoPie(EscapeeAnno)
+```
+
+```{r, collapse=TRUE}
+ChIPseeker::vennpie(EscapeeAnno)
+```
+
+```{r, collapse=TRUE}
+ChIPseeker::plotDistToTSS(EscapeeAnno)
+```
+
+**From ensembl ids to gene symbols, entrez ids and metadata**
+```{r}
+Host <- "https://aug2020.archive.ensembl.org"
+Specie <- "hsapiens"
+BioMart <- biomaRt::listMarts(host=Host)[1,1]
+Version <- biomaRt::listMarts(host=Host)[1,2]
+Mart <- biomaRt::useMart(host=Host, biomart=BioMart, version=Version, 
+                         dataset=paste0(Specie,'_gene_ensembl'))
+
+EscapeeGenes_ensembl = unique(as.data.frame(EscapeeAnno)$geneId) #Genes assigned to the escapees regions by chipseeker
+
+Attributes = c("ensembl_gene_id_version", "ensembl_gene_id", "hgnc_symbol", "gene_biotype")
+
+EscapeeGeneAnnotation <- biomaRt::getBM(mart=Mart, filters='ensembl_gene_id_version', values=EscapeeGenes_ensembl, attributes=Attributes, uniqueRows=TRUE)
+EscapeeGeneAnnotation <- EscapeeGeneAnnotation %>% dplyr::distinct() #%>%filter(!is.na(hgnc_symbol)) %>% filter(!hgnc_symbol%in%"")
+```
+
+```{r}
+EscapeeGenes_ensembl[!EscapeeGenes_ensembl %in% EscapeeGeneAnnotation$ensembl_gene_id_version] %>% head() #ChipSeeker annotation that are not present in the biomart
+
+EscapeeGenes_symbol = EscapeeGeneAnnotation %>% filter(!is.na(hgnc_symbol)) %>% filter(!hgnc_symbol%in%"") %>% pull(hgnc_symbol) %>% unique()
+
+EscapeeGenes_entrez = mapIds(org.Hs.eg.db, keys = EscapeeGenes_symbol, column = "ENTREZID", keytype = "SYMBOL") %>% unique()
+```
+
+```{r}
+AnnotatedEscapees <- dplyr::left_join(as.data.frame(EscapeeAnno), EscapeeGeneAnnotation, by=c('geneId' = 'ensembl_gene_id_version')) 
+```
+
+# 4. Functional enrichment analysis
+
+## 4.1 Selection of modulated genes and generation of gene vector
+
+```{r TopGOSetI}
+GeneVectors <- topGOGeneVectors_meth_v2(gene_symbols = EscapeeGenes_symbol, genomic_type = "all", gene_type = "all", Universe = GeneUniverse_symbol) %>% unlist()
+```
+
+Genes associated to escapee CpGs that are not present in the universe:
+
+```{r, collapse=FALSE}
+not_present <- EscapeeGeneAnnotation %>% filter(hgnc_symbol %in% unique(na.omit(EscapeeGenes_symbol))[!unique(na.omit(EscapeeGenes_symbol)) %in%  GeneUniverse_symbol])
+not_present
+```
+
+These are the CpGs annotated with those genes
+
+```{r}
+EscapeeAnno@anno %>% as.data.frame() %>% filter(geneId %in% not_present$ensembl_gene_id_version)
+```
+
+```{r TopGOSetII}
+BpEval <- ifelse(length(grep('BP', params$TopGO))!=0, TRUE, FALSE)
+MfEval <- ifelse(length(grep('MF', params$TopGO))!=0, TRUE, FALSE)
+CcEval <- ifelse(length(grep('CC', params$TopGO))!=0, TRUE, FALSE)
+```
+
+Therefore:
+
+ * universe genes: __`r length(GeneVectors)`__ genes
+ * escapee genes: __`r table(GeneVectors)['1']`__ genes
+ 
+## 4.2 TopGO analysis: Biological Process
+
+On the basis of the analysis settings, the enrichment for Biological Process __`r ifelse(BpEval==TRUE, 'IS', 'IS NOT')` performed__.
+
+```{r BPAll, eval=BpEval, collapse=TRUE}
+# I generate a list that contains the association between each gene and the GO terms that are associated to it
+BPann <- topGO::annFUN.org(whichOnto="BP", feasibleGenes=names(GeneVectors), 
+                           mapping="org.Hs.eg.db", ID="symbol") %>% inverseList()
+
+# Wrapper function for topGO analysis 
+ResBPAll <- topGOResults_new(Genes=GeneVectors, gene2GO=BPann, ontology='BP', 
+                         desc=NULL, nodeSize=15, algorithm='weight01', statistic='fisher', 
+                         EnTh=params$GoEnTh, PvalTh=params$GoPvalTh, minTerms=12, geneTh=4,
+                         saveRes=TRUE, outDir=paste0(OutputFolder), fileName='BPAll', maxAnn = 500)
+```
+
+### __Result visualization: Barplot__
+
+```{r}
+nterms=20
+cols <- c(All='forestgreen', Down='blue', Up='red')
+pals <- lapply(cols, {function(el) grDevices::colorRampPalette(c('gold', el))(nterms)})
+```
+
+```{r BPBarplot_all, eval=BpEval, collapse=TRUE, fig.height=8.5, fig.width=9}
+if(nrow(ResBPAll$ResSel)>0){
+  topGOBarplot_new(TopGORes=ResBPAll$ResSel, terms=nterms, pvalTh=0.01, plotTitle=paste0("All Escapees genes related BP terms"),
+                             palette=pals$All, flip_x=FALSE)
+}  
+```
+
+### __Result visualization: Bubbleplot__
+
+```{r BPBubbleplot_all, eval=BpEval, collapse=TRUE, fig.height=4, fig.width=10}
+if(nrow(ResBPAll$ResSel)>0){
+  bubbleplot(ResBPAll$ResSel, terms=nterms, Ont = "BP", pvalTh=0.01, plotTitle="All Escapees genes related BP terms")
+  }
+```
+
+### __Result visualization: table of genes in top terms__
+
+```{r BPtableGenesInTerms_all, eval=BpEval, collapse=TRUE}
+if(nrow(ResBPAll$ResSel)>0){
+  table_GenesInTerm_BPAll <- TableGenesInTerm(ResBPAll$ResSel, ResBPAll$GOdata, nterms=nterms)
+}
+
+table_GenesInTerm_BPAll %>% dplyr::select(-c(Score, GOid)) %>%
+    datatable(class = 'hover', rownames = FALSE, extension='Buttons', escape = FALSE, caption = paste0("All genes in top ", nterms, " BP terms"), options = list(pageLength=10, dom='Bfrtip', autoWidth=TRUE, buttons=list(c('csv', 'excel'))))
+```
+
+
+## 4.3 TopGO analysis: Molecular Function
+
+On the basis of the analysis settings, the enrichment for Molecular Function __`r ifelse(MfEval==TRUE, 'IS', 'IS NOT')` performed__.
+
+```{r MFAll, eval=MfEval, collapse=TRUE}
+# I generate a list that contains the association between each gene and the GO terms that are associated to it
+MFann <- topGO::annFUN.org(whichOnto="MF", feasibleGenes=names(GeneVectors), 
+                           mapping="org.Hs.eg.db", ID="symbol") %>% inverseList()
+
+# Wrapper function for topGO analysis 
+ResMFAll <- topGOResults_new(Genes=GeneVectors, gene2GO=MFann, ontology='MF', 
+                         desc=NULL, nodeSize=15, algorithm='weight01', statistic='fisher', 
+                         EnTh=params$GoEnTh, PvalTh=params$GoPvalTh, minTerms=12, geneTh=4,
+                         saveRes=TRUE, outDir=paste0(OutputFolder), fileName='MFAll', maxAnn = 500)
+```
+
+### __Result visualization: Barplot__
+
+```{r}
+nterms=20
+cols <- c(All='forestgreen', Down='blue', Up='red')
+pals <- lapply(cols, {function(el) grDevices::colorRampPalette(c('gold', el))(nterms)})
+```
+
+```{r MFBarplot_all, eval=MfEval, collapse=TRUE, fig.height=8.5, fig.width=9}
+if(nrow(ResMFAll$ResSel)>0){
+  topGOBarplot_new(TopGORes=ResMFAll$ResSel, terms=nterms, pvalTh=0.01, plotTitle=paste0("All Escapees genes related MF terms"),
+                             palette=pals$All, flip_x=FALSE)
+}  
+```
+
+### __Result visualization: Bubbleplot__
+
+```{r MFBubbleplot_all, eval=MfEval, collapse=TRUE, fig.height=4, fig.width=10}
+if(nrow(ResMFAll$ResSel)>0){
+  bubbleplot(ResMFAll$ResSel, terms=nterms, Ont = "MF", pvalTh=0.01, plotTitle="All Escapees genes related MF terms")
+  }
+```
+
+### __Result visualization: table of genes in top terms__
+
+```{r MFtableGenesInTerms_all, eval=MfEval, collapse=TRUE}
+if(nrow(ResMFAll$ResSel)>0){
+  table_GenesInTerm_MFAll <- TableGenesInTerm(ResMFAll$ResSel, ResMFAll$GOdata, nterms=nterms)
+}
+
+table_GenesInTerm_MFAll %>% dplyr::select(-c(Score, GOid)) %>%
+    datatable(class = 'hover', rownames = FALSE, extension='Buttons', escape = FALSE, caption = paste0("All genes in top ", nterms, " MF terms"), options = list(pageLength=10, dom='Bfrtip', autoWidth=TRUE, buttons=list(c('csv', 'excel'))))
+```
+
+## 4.4 TopGO analysis: Cellular Component
+
+On the basis of the analysis settings, the enrichment for Cellular Component __`r ifelse(CcEval==TRUE, 'IS', 'IS NOT')`__ performed.
+
+```{r CCAll, eval=CcEval, collapse=TRUE}
+# I generate a list that contains the association between each gene and the GO terms that are associated to it
+CCann <- topGO::annFUN.org(whichOnto="CC", feasibleGenes=names(GeneVectors), 
+                           mapping="org.Hs.eg.db", ID="symbol") %>% inverseList()
+
+# Wrapper function for topGO analysis 
+ResCCAll <- topGOResults_new(Genes=GeneVectors, gene2GO=CCann, ontology='CC', 
+                         desc=NULL, nodeSize=15, algorithm='weight01', statistic='fisher', 
+                         EnTh=params$GoEnTh, PvalTh=params$GoPvalTh, minTerms=12, geneTh=4,
+                         saveRes=TRUE, outDir=paste0(OutputFolder), fileName='CCAll', maxAnn = 500)
+```
+
+### __Result visualization: Barplot__
+
+```{r}
+nterms=20
+cols <- c(All='forestgreen', Down='blue', Up='red')
+pals <- lapply(cols, {function(el) grDevices::colorRampPalette(c('gold', el))(nterms)})
+```
+
+```{r CCBarplot_all, eval=CcEval, collapse=TRUE, fig.height=8.5, fig.width=9}
+if(nrow(ResCCAll$ResSel)>0){
+  topGOBarplot_new(TopGORes=ResCCAll$ResSel, terms=nterms, pvalTh=0.01, plotTitle=paste0("All Escapees genes related CC terms"),
+                             palette=pals$All, flip_x=FALSE)
+}  
+```
+
+### __Result visualization: Bubbleplot__
+
+```{r CCBubbleplot_all, eval=CcEval, collapse=TRUE, fig.height=4, fig.width=10}
+if(nrow(ResCCAll$ResSel)>0){
+  bubbleplot(ResCCAll$ResSel, terms=nterms, Ont = "CC", pvalTh=0.01, plotTitle="All Escapees genes related CC terms")
+  }
+```
+
+### __Result visualization: table of genes in top terms__
+
+```{r CCtableGenesInTerms_all, eval=CcEval, collapse=TRUE}
+if(nrow(ResCCAll$ResSel)>0){
+  table_GenesInTerm_CCAll <- TableGenesInTerm(ResCCAll$ResSel, ResCCAll$GOdata, nterms=nterms)
+}
+
+table_GenesInTerm_CCAll %>% dplyr::select(-c(Score, GOid)) %>%
+    datatable(class = 'hover', rownames = FALSE, extension='Buttons', escape = FALSE, caption = paste0("All genes in top ", nterms, " CC terms"), options = list(pageLength=10, dom='Bfrtip', autoWidth=TRUE, buttons=list(c('csv', 'excel'))))
+```
+****
+
+# 5. Saving and Session Info
+
+```{r Saving}
+save.image(paste0(OutputFolder, "AnnotationAndFunctionalEnv.RData"))
+saveRDS(AnnotatedEscapees, paste0(OutputFolder, "AnnotatedEscapees.rds"))
+```
+
+```{r}
+file_conn <- file(paste0(OutputFolder, "EscapeeGenes_ensembl.txt"), "w")
+for (element in gsub(x = EscapeeGenes_ensembl, pattern = "\\..*", replacement = "")) {
+  cat(element, "\n", file = file_conn)
+}
+close(file_conn)
+```
+
+```{r}
+file_conn <- file(paste0(OutputFolder, "EscapeeGenes_symbol.txt"), "w")
+for (element in EscapeeGenes_symbol) {
+  cat(element, "\n", file = file_conn)
+}
+close(file_conn)
+```
+
+```{r}
+file_conn <- file(paste0(OutputFolder, "GeneUniverse_symbol.txt"), "w")
+for (element in GeneUniverse_symbol) {
+  cat(element, "\n", file = file_conn)
+}
+close(file_conn)
+
+```
+
+```{r SaveSession}
+SessionInfo <- sessionInfo()
+Date <- date()
+```
+
+```{r SessionInfo}
+Date
+SessionInfo
+```

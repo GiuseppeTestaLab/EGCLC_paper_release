@@ -1,0 +1,153 @@
+---
+title: "Generation of bsseq object with escapee CpGs (filtered with meth in hPGC > 30%)"
+author: "Gaja Matassa"
+date: 'Date: `r format(Sys.Date(), "%B %d, %Y")`'
+output:
+  html_document:
+    toc: yes
+    toc_float: yes
+    theme: united
+    highlight: kate
+    code_folding: hide
+  word_document:
+    toc: yes
+  pdf_document:
+    toc: yes
+params:
+  OutputFolder: '~/DataDir/7.EscapeesExploration/Output/EscapeeBsseq/'
+---
+
+# 1. Environment setting
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, collapse = TRUE, warning = FALSE)
+options(scipen = 100, digits = 4)
+```
+
+```{r, collapse=TRUE}
+library(ggplot2)
+library(bsseq)
+library(scales)
+library(gridExtra)
+library(dplyr)
+library(dmrseq)
+library(annotatr)
+library(sechm)
+library(rtracklayer)
+source("../Methylation_helper.R")
+```
+
+```{r, collapse=TRUE}
+OutputFolder <- params$OutputFolder
+```
+
+# 2. Loading data
+
+## 2.1 BSSeq object
+
+Loading of bsseq object with CpGs shared by 75% of the samples.
+
+```{r, collapse=TRUE}
+bsseq_obj <- readRDS("~/DataDir/1.PreliminaryAnalysis/Output/WithSelectedEGCLCs/bsseq_obj_sharedby75ofall.rds") #getting bsseq object where sample selection and CpG filtering were already performed 
+```
+
+## 2.3 Escapees regions
+
+These escapees regions were filtered from the regions found in [Tang et al. 2015](https://doi.org/10.1016/j.cell.2015.04.053). In particular, those covered by at least 10 CpGs in all (Tang et al. 2015) human primordial germ cell (hPGC) samples and with methylation levels above 30% in (Tang et al. 2015) week 5-9 hPGC samples were selected.
+
+```{r}
+EscapeesRegions <- readxl::read_xlsx("~/DataDir/7.EscapeesExploration/Output/EscapeesFiltering/FirstFilteringRegions.xlsx")
+```
+
+```{r}
+EscapeesRegions_GRanges_hg19 <- makeGRangesFromDataFrame(EscapeesRegions, seqnames.field = "Chr", start.field = "Start", end.field = "End", keep.extra.columns = FALSE, na.rm=TRUE)
+```
+
+We have `r length(EscapeesRegions_GRanges_hg19)` escapees regions with a total of `r sum(EscapeesRegions$CpG.counts)` CpGs.
+
+**These regions are hg19 and need to be converted to hg38 to be compared with our data**
+
+```{r}
+path = "~/DataDir/7.EscapeesExploration/hg19ToHg38.over.chain"
+ch = import.chain(path)
+str(ch[[1]])
+
+if ("UCSC" %in% seqlevelsStyle(EscapeesRegions_GRanges_hg19)) {
+  EscapeesRegions_GRanges_hg38 = liftOver(EscapeesRegions_GRanges_hg19, ch)
+  EscapeesRegions_GRanges_hg38 = unlist(EscapeesRegions_GRanges_hg38)  
+}else{stop("The seqlevels style should be UCSC!!!")}
+```
+
+
+```{r}
+length(EscapeesRegions_GRanges_hg38)
+```
+
+After the conversion we have `r length(EscapeesRegions_GRanges_hg38)` escapees regions.
+
+```{r}
+EscapeesRegions_GRanges <- EscapeesRegions_GRanges_hg38
+```
+
+# 3. Generation of BSSeq oject with escapee CpGs and non-escapee CpGs
+
+```{r}
+bsseq_ranges_df <- granges(bsseq_obj) %>% as.data.frame() #granges has 0-based position they seem 1-based. Look here for explanation: https://www.biostars.org/p/84686/
+bsseq_ranges_df$end <- bsseq_ranges_df$start + 1 #to make them 0-based
+bsseq_granges <- makeGRangesFromDataFrame(bsseq_ranges_df, starts.in.df.are.0based = TRUE)
+
+bsseq_obj_1based <- bsseq_obj
+bsseq_obj_1based@rowRanges <- bsseq_granges
+granges(bsseq_obj_1based)
+```
+
+This to obtain a bsseq object with only CpGs contained in the escapees regions
+
+```{r}
+m <- findOverlaps(bsseq_granges, EscapeesRegions_GRanges)
+
+bsseq_obj_escapees <- bsseq_obj_1based[queryHits(m),]
+```
+
+With our targeted kit we are able to cover **`r length(bsseq_obj_escapees)`** CpGs belonging to all the escapees regions (`r round((length(bsseq_obj_escapees)/sum(EscapeesRegions$CpG.counts))*100, 2)`%).
+
+Let's create also a bsseq object with non-escapee CpGs (all the other CpGs that are not in escapees regions)
+
+```{r}
+bsseq_obj_NonEscapees <- bsseq_obj_1based[-queryHits(m),]
+```
+
+# 4. Violin plot showing methylation levels of escapee CpGs
+
+```{r}
+assays(bsseq_obj_escapees)$Meth <- getMeth(bsseq_obj_escapees, type = "raw")
+assays(bsseq_obj_NonEscapees)$Meth <- getMeth(bsseq_obj_NonEscapees, type = "raw")
+
+sample_colors <- c("hiPSC_rep1" = "#dd1c77", "hiPSC_rep2" = "#dd1c77", "hiPSC_rep3" = "#dd1c77", "hiPSC_rep4" = "#dd1c77",
+                   "iMeLC_rep1" = "#377eb8", "iMeLC_rep2" = "#377eb8", "iMeLC_rep3" = "#377eb8", "iMeLC_rep4" = "#377eb8",
+                   "hPGCLC_rep1" = "#4daf4a", "hPGCLC_rep2" = "#4daf4a", "hPGCLC_rep3" = "#4daf4a",
+                   "hEGCLC_rep1" = "#ff7f00", "hEGCLC_rep2" = "#ff7f00", "hEGCLC_rep3" = "#ff7f00")
+
+violin_plot(assays(bsseq_obj_escapees)$Meth, stat="median") + ggplot2::scale_fill_manual(values = sample_colors)
+```
+
+# 5. Saving and Session Info
+
+Saving:
+
+-   DataFrame of Escapee regions after filtering and conversion to hg38 (excel format)
+
+-   bsseq object subset with only CpGs in escapees regions where hPGCs have meth \> 0.3
+
+-   bsseq object subset with non-escapee CpGs (all the other CpGs that are not in escapees regions)
+
+```{r}
+openxlsx::write.xlsx(as.data.frame(EscapeesRegions_GRanges) %>% rename(chr = seqnames), file = paste0(OutputFolder, "EscapeeRegions_hg38.xlsx")) 
+saveRDS(bsseq_obj_escapees, paste0(OutputFolder, "bsseq_obj_escapees.rds"))
+saveRDS(bsseq_obj_NonEscapees, paste0(OutputFolder, "bsseq_obj_NonEscapees.rds"))
+```
+
+```{r}
+date()
+sessionInfo()
+```

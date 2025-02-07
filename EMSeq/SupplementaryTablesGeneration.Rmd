@@ -1,0 +1,130 @@
+---
+title: "Supplementary Tables Generation"
+author: "Gaja Matassa"
+date: 'Date: `r format(Sys.Date(), "%B %d, %Y")`'
+output:
+    html_document:
+        toc: true
+        toc_float: true
+        theme: 'united'
+        highlight: 'kate'
+        code_folding: hide
+params: 
+    DMRAnnotated: '~/DataDir/4.DMRAnnotated/DMRsAnnotated_final.rds'
+    OutputFolder: '~/DataDir/SupplementaryTables/'
+---
+
+```{r}
+library(bsseq)
+library(plyr)
+library(dplyr)
+library("data.table") 
+```
+
+# Table S5
+
+## DMRs
+```{r}
+DMRs_annotated <- readRDS(params$DMRAnnotated)
+```
+
+```{r}
+for (comparison in names(DMRs_annotated)) {
+  
+  DMRs_annotated[[comparison]] <- DMRs_annotated[[comparison]] %>% setnames(old = c('seqnames', 'meanMethy1','meanMethy2'), new = c('chr', paste0("meanMethy.", strsplit(comparison, "vs")[[1]][1]), paste0("meanMethy.",strsplit(comparison, "vs")[[1]][2])))
+
+}
+
+names(DMRs_annotated) <- paste0("DMRs ", names(DMRs_annotated))
+```
+
+## Median methylation levels
+
+```{r}
+bsseq_obj <- readRDS("~/DataDir/1.PreliminaryAnalysis/Output/WithSelectedEGCLCs/bsseq_obj_complete.rds")
+```
+
+```{r}
+median_df <- data.frame("Sample" = colnames(bsseq_obj), "Median.Methy" = apply(round(getMeth(bsseq_obj, type = "raw")*100, 2), 2, median, na.rm = TRUE))
+S5_list <- c(list(median_df) %>% setNames("Median Methylation in %"), DMRs_annotated)
+```
+
+## TopGO
+
+```{r}
+filtering_GOTerms <- function(GOResults) { 
+#filtering by enrichment ratio (ER) ,minimum number of significant genes, max number of annotated gened and p-value
+  BPllSel <- GOResults %>%
+      mutate(ER = round(.data$Significant/.data$Expected, 2)) %>%
+      filter(.data$ER > 2) %>%
+      filter(.data$Significant >= 4) %>%
+      filter(.data$Annotated < 500)  %>%
+      filter(as.numeric(.data$Statistics) <= 0.01) %>%
+      mutate("-log10(pvalue)" = -log10(as.numeric(.data$Statistics))) %>%
+      mutate("Significant/Annotated" = .data$Significant/.data$Annotated)
+    
+  #to retrieve terms that are not truncated
+  GO <- as.list(GO.db::GOTERM)
+  BPllSel$Term <- stringr::str_wrap(sapply(as.character(BPllSel[['GO.ID']]),
+                                                    function(x) X = GO[[x]]@Term))
+  return(BPllSel)
+} 
+```
+
+```{r}
+BP <- read.table('~/DataDir/5.DMRInterpretation/TopGO/hiPSCs_vs_hPGCLCs/All/BPAll.txt', header = TRUE, row.names = NULL)
+S5_list[['TopGO All hiPSCsvshPGCLCs']] <- filtering_GOTerms(BP)
+BP <- read.table('~/DataDir/5.DMRInterpretation/TopGO/hEGCLCs_vs_hPGCLCs/All/BPAll.txt', header = TRUE, row.names = NULL)
+S5_list[['TopGO All hEGCLCsvshPGCLCs']] <- filtering_GOTerms(BP)
+BP <- read.table('~/DataDir/5.DMRInterpretation/TopGO/hEGCLCs_vs_hiPSCs/All/BPUp.txt', header = TRUE, row.names = NULL)
+S5_list[['TopGO Up hEGCLCsvshiPSCs']] <- filtering_GOTerms(BP)
+```
+
+## Saving
+
+```{r}
+openxlsx::write.xlsx(S5_list, paste0(params$OutputFolder, "TableS5.xlsx"), rowNames = FALSE, headerStyle = openxlsx::createStyle(textDecoration = "Bold"))
+```
+
+# Table S6
+
+Table S6 - Imprinted and escapee regions
+A List of imprinted regions, related to Figure 4H
+B List of escapee regions from Tang et al., 2015 [filtered for methylation levels >30% in week 5-9 hPGC and converted to GRCh38 (hg38) assembly], related to Figure 6
+C Go terms (Biological Processes category) associated to escapee regions, related to Figure 6E
+
+```{r}
+S6_list <- list()
+```
+
+Get imprinted regions
+
+```{r}
+ImprintedRegions <- openxlsx::read.xlsx("~/DataDir/5.DMRInterpretation/imprinted_region_all_for_meth.xlsx")
+
+#Removal of regions for which genomic positions were not retrieved
+ImprintedRegions <- ImprintedRegions[!is.na(ImprintedRegions$Start), ]
+
+S6_list$ImprintedRegions <- ImprintedRegions
+```
+
+Get escapees regions
+
+```{r}
+EscapeeRegions <- openxlsx::read.xlsx("~/DataDir/7.EscapeesExploration/Output/EscapeeBsseq/EscapeeRegions_hg38.xlsx")
+EscapeeRegions$Ref_genome <- "hg38"
+
+S6_list$EscapeeRegions <- EscapeeRegions
+```
+
+```{r}
+BP <- read.table('~/DataDir/7.EscapeesExploration/Output/EscapeesAnnotationAndFunctional/BPAll.txt', header = TRUE, row.names = NULL)
+
+S6_list[['TopGO All Escapees']] <- filtering_GOTerms(BP)
+```
+
+## Saving
+
+```{r}
+openxlsx::write.xlsx(S6_list, paste0(params$OutputFolder, "TableS6.xlsx"), rowNames = FALSE, headerStyle = openxlsx::createStyle(textDecoration = "Bold"))
+```

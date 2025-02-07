@@ -1,0 +1,1191 @@
+---
+title: "Plots of differentially methylated regions (DMRs)"
+author: "Gaja Matassa"
+date: 'Date: `r format(Sys.Date(), "%B %d, %Y")`'
+output:
+    html_document:
+        toc: true
+        toc_float: true
+        theme: 'united'
+        highlight: 'kate'
+        code_folding: hide
+params: 
+    DMRAnnotated: '~/DataDir/4.DMRAnnotated/DMRsAnnotated_final.rds'
+---
+
+# 1. Environment setting
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, collapse = TRUE)
+```
+
+```{r, collapse=TRUE}
+library(ggplot2)
+library(plotly)
+library(scales)
+library(gridExtra)
+library(dplyr)
+library(tidyr)
+library(dmrseq)
+library(annotatr)
+library(sechm)
+library(GenomicRanges)
+source("../../Methylation_helper.R")
+```
+
+# 2. Loading data
+
+## 2.1 BSSeq objects
+
+Loading of bsseq objects with CpGs shared by all samples.
+
+```{r, collapse=TRUE}
+bsseq_obj <- readRDS("~/DataDir/1.PreliminaryAnalysis/Output/WithSelectedEGCLCs/bsseq_obj_sharedby75ofall.rds") #getting bsseq object where sample selection and CpG filtering were already performed 
+```
+
+## 2.2 Annotated DMRs
+
+**The DMRs here selected were called like with: `delta=0.25` and
+`p.threshold=0.0001`**
+
+```{r}
+DMRs_annotated <- readRDS(params$DMRAnnotated)
+```
+
+From [DSS
+vignette](https://bioconductor.org/packages/release/bioc/vignettes/DSS/inst/doc/DSS.html#4_Frequently_Asked_Questions)
+
+Q: What's the meaning of areaStat parameter?
+
+A: We adapt that from the bsseq package. It is the sum of the test
+statistics of all CpG sites within a DMR. It doesn't have a direct
+biological meaning. One can imagine when we try to rank the DMRs, we
+don't know whether the height or the width is more important? AreaStat
+is a combination of the two. This is an ad hoc way to rank DMRs, but
+larger AreaStat is more likely to be a DMR
+
+# 3. Get `annoTrack` with **`annotatr`** and **`dmrseq`**
+
+```{r, collapse=TRUE}
+# get annotations for hg38
+annoTrack <- dmrseq::getAnnot("hg38")
+```
+
+# 4. Exploration of DMR-associated genes {.tabset}
+
+```{r}
+cellTypes_colors <- c(hiPSCs ="#dd1c77", iMeLCs ="#377eb8", hPGCLCs ="#4daf4a", hEGCLCs = "#ff7f00")
+colData(bsseq_obj)$Type <- factor(colData(bsseq_obj)$Type, levels = c("hiPSCs", "iMeLCs" , "hPGCLCs", "hEGCLCs"))
+```
+
+## 4.1 hPGCLCs vs hiPSCs
+
+```{r}
+comparison <- "hiPSCsvshPGCLCs"
+DMRs <- DMRs_annotated[[comparison]]
+```
+
+```{r}
+DMRs$DMR <- paste0("DMR", rownames(DMRs))
+DMRs_gr <- makeGRangesFromDataFrame(DMRs, keep.extra.columns = TRUE)
+```
+
+```{r}
+m <- findOverlaps(rowRanges(bsseq_obj), DMRs_gr)
+
+bsseq_obj_subset <- bsseq_obj[queryHits(m),]
+
+rowData(bsseq_obj_subset)$DMR <- DMRs_gr[subjectHits(m), ]$DMR
+rowData(bsseq_obj_subset)$GenomicAnn <- DMRs_gr[subjectHits(m), ]$ChipSeekerAnn
+rowData(bsseq_obj_subset)$Gene <- DMRs_gr[subjectHits(m), ]$hgnc_symbol
+rowData(bsseq_obj_subset)$GeneBiotype <- DMRs_gr[subjectHits(m),]$gene_biotype
+```
+
+```{r}
+rowData(bsseq_obj_subset)$GenomicRegion <- rowData(bsseq_obj_subset)$GenomicAnn
+
+rowData(bsseq_obj_subset)$GenomicRegion[grep(rowData(bsseq_obj_subset)$GenomicRegion, pattern = "Exon")] <- "Exon"
+rowData(bsseq_obj_subset)$GenomicRegion[grep(rowData(bsseq_obj_subset)$GenomicRegion, pattern = "Intron")] <- "Intron"
+```
+
+In total we have `r length(bsseq_obj_subset)` CpGs in the significant DMRs.
+
+_Calculate average methylation of CpGs in each DMR_
+
+```{r}
+assays(bsseq_obj_subset)$Meth <- getMeth(bsseq_obj_subset, type = "raw")
+
+AvgMeth <- aggregate(assays(bsseq_obj_subset)$Meth, list(rowData(bsseq_obj_subset)$DMR), mean, na.rm = T)
+rownames(AvgMeth) <- AvgMeth$Group.1
+AvgMeth <- AvgMeth[, -1]
+
+rowDataSE <- rowData(bsseq_obj_subset)
+rownames(rowDataSE) <- rowData(bsseq_obj_subset)$DMR
+rowDataSE <- rowDataSE[rownames(AvgMeth), ] 
+SE <- SummarizedExperiment(assays=AvgMeth, colData=colData(bsseq_obj_subset), rowData = rowDataSE, )
+
+assays(SE) <- assays(SE) %>% setNames("AvgMeth")
+
+identical(rownames(assay(SE)), rownames(rowData(SE))) #TRUE
+## [1] TRUE
+```
+
+Setting colors
+
+```{r}
+ScaledCols <- c('darkblue', "purple", "white", "lightgoldenrod1", 'goldenrod1')
+
+metadata(SE)$anno_colors <- list(Type = cellTypes_colors,
+                                               GenomicRegion = c ("3' UTR" = "#FFADAD", "5' UTR" = "#FFD6A5", "Distal Intergenic" = "#FDFFB6", "Downstream (<=300bp)" = "#FFFFFC", "Exon" = "#9BF6FF", "Intron" = "#A0C4FF", "Promoter (<=1kb)" = "#BDB2FF", "Promoter (1-2kb)" = "#FFC6FF", "Promoter (2-3kb)" = "#CAFFBF"))
+
+sample_colors <- c("hiPSC_rep1" = "#dd1c77", "hiPSC_rep2" = "#dd1c77", "hiPSC_rep3" = "#dd1c77", "hiPSC_rep4" = "#dd1c77",
+                   "iMeLC_rep1" = "#377eb8", "iMeLC_rep2" = "#377eb8", "iMeLC_rep3" = "#377eb8", "iMeLC_rep4" = "#377eb8",
+                   "hPGCLC_rep1" = "#4daf4a", "hPGCLC_rep2" = "#4daf4a", "hPGCLC_rep3" = "#4daf4a",
+                   "hEGCLC_rep1" = "#ff7f00", "hEGCLC_rep2" = "#ff7f00", "hEGCLC_rep3" = "#ff7f00")
+```
+
+### 4.1.1 Heatmaps
+
+**Without sample clustering**
+
+```{r, fig.width=13, fig.height=12}
+break_coord <- assay(SE) %>% quantile(seq(0,1, by=0.1), na.rm =TRUE)
+ExpCols <- viridisLite::plasma(length(seq(head(break_coord,1), tail(break_coord,1), by=0.2)))
+
+sechm(SE, features = rownames(SE), assayName = "AvgMeth", hmcols=ExpCols, breaks=seq(head(break_coord,1), tail(break_coord,1), by=0.2), show_colnames=TRUE, do.scale=FALSE, column_title = "Methylation Levels in DMRs (averaging CpGs) - hPGCLCs vs hiPSCs", top_annotation = c("Type"), left_annotation = c("GenomicRegion"), gaps_row = "GenomicRegion", row_title_rot = 0) 
+```
+
+**With sample clustering**
+
+```{r, fig.width=13, fig.height=12}
+sechm(SE, features = rownames(SE), assayName = "AvgMeth", hmcols=ExpCols, breaks=seq(head(break_coord,1), tail(break_coord,1), by=0.2), show_colnames=TRUE, do.scale=FALSE, cluster_cols = TRUE, column_title = "Methylation Levels in DMRs (averaging CpGs) - hPGCLCs vs hiPSCs", top_annotation = c("Type"), left_annotation = c("GenomicRegion"), gaps_row = "GenomicRegion", row_title_rot = 0) 
+```
+
+### 4.1.2 Violin plots
+
+**Dividing by sample**
+
+```{r, fig.width=10}
+DMRviolin(bsseq_obj = SE, assayName = "AvgMeth", title = "Methylation Levels in DMRs (averaging CpGs) - hPGCLCs vs hiPSCs", fill = "Genomic region")
+```
+
+**Dividing by genomic region**
+
+```{r, fig.width=10}
+DMRviolin(bsseq_obj = SE, assayName = "AvgMeth", title = "Methylation Levels in DMRs (averaging CpGs) - hPGCLCs vs hiPSCs", fill = "Sample", colors = sample_colors)
+```
+
+### 4.1.3 Top 20 DMR-associated genes
+
+Useful to visualize single DMR with exon and CpG annotations. Here the
+top 20 significant DMRs are plotted. Rows in DMRs are sorted by
+"areaStat", which is the sum of test statistics of all CpG sites in the
+region. Remember that **we do not have p-value for DMRs because in DMR
+calling, the statistical test is perform for each CpG, and then the
+significant CpG are merged into regions. It is very difficult to
+estimate FDR at the region-level, based on the site level test results
+(p-values or FDR). This is a difficult question for all types of
+genome-wide assays such as the ChIP-seq.**
+
+**Here we can filter for only differentially methylated promoters of
+protein coding genes**
+
+```{r, collapse=TRUE}
+DMRs <- DMRs[grep("Promoter", DMRs$ChipSeekerAnn),] %>% filter(gene_biotype == "protein_coding")
+```
+
+```{r, collapse=TRUE}
+nr_of_top <- 20
+
+if (nrow(DMRs) > 20){nr_plots <- nr_of_top}else{nr_plots <- nrow(DMRs)}
+
+for(i in 1:nr_plots){
+plotDMRs(bsseq_obj, regions=DMRs[i,], testCovariate=3, annoTrack=annoTrack, qval = FALSE, stat = FALSE, extend = 500, main = paste0(DMRs[i,]$hgnc_symbol, " - ", DMRs[i,]$ChipSeekerAnn), verbose = FALSE, horizLegend = TRUE, col = c(rep(cellTypes_colors[1:2], each = 4), rep(cellTypes_colors[3:4], each = 3)))
+}
+```
+
+The genes are: `r DMRs[1:nr_of_top,]$hgnc_symbol`
+
+### 4.1.3 Top 10 DMR-associated genes where there is gain in methylation
+
+Here the top 10 DMRs where methylation is higher in hPGCLCs (and lower
+in hiPSCs).
+
+```{r, collapse=TRUE}
+nr_of_top <- 10
+
+if (nrow(DMRs[DMRs$diff.Methy<0, ]) > 10){nr_plots <- nr_of_top}else{nr_plots <- nrow(DMRs[DMRs$diff.Methy<0, ])}
+
+for(i in 1:nr_plots){
+  plotDMRs(bsseq_obj, regions=DMRs[DMRs$diff.Methy<0, ][i, ], testCovariate=3, annoTrack=annoTrack, qval = FALSE, stat = FALSE, extend = 5000, main = paste0(DMRs[DMRs$diff.Methy<0, ][i, ]$hgnc_symbol, " - ", DMRs[DMRs$diff.Methy<0, ][i, ]$ChipSeekerAnn), verbose = FALSE, horizLegend = TRUE, col = c(rep(cellTypes_colors[1:2], each = 4), rep(cellTypes_colors[3:4], each = 3)))
+}
+```
+
+The genes are: `r DMRs[DMRs$diff.Methy<0, ][1:10, ]$hgnc_symbol`
+
+### 4.1.4 Top 10 DMR-associated genes where there is loss in methylation
+
+Here the top 10 DMRs where methylation is higher in hiPSCs (and lower in
+hPGCLCs).
+
+```{r, collapse=TRUE}
+nr_of_top <- 10
+
+if (nrow(DMRs[DMRs$diff.Methy>0, ]) > 10){nr_plots <- nr_of_top}else{nr_plots <- nrow(DMRs[DMRs$diff.Methy>0, ])}
+
+for(i in 1:nr_plots){
+plotDMRs(bsseq_obj, regions=DMRs[DMRs$diff.Methy>0, ][i, ], testCovariate=3, annoTrack=annoTrack, qval = FALSE, stat = FALSE, extend = 5000, main = paste0(DMRs[DMRs$diff.Methy>0, ][i, ]$hgnc_symbol, " - ", DMRs[DMRs$diff.Methy>0, ][i, ]$ChipSeekerAnn), verbose = FALSE, horizLegend = TRUE, col = c(rep(cellTypes_colors[1:2], each = 4), rep(cellTypes_colors[3:4], each = 3)))
+}
+```
+
+The genes are: `r DMRs[DMRs$diff.Methy>0, ][1:10, ]$hgnc_symbol`
+
+### 4.1.5 Exploration of PGC markers and other relevant genes
+
+```{r, collapse=TRUE}
+SelectedGenes <- c("PIWIL2", "NANOS3", "IGF1", "DNMT3L", "PIFO", "SOX15", "CSF3R", "NUMB", "CXCR4")
+```
+
+```{r, collapse=TRUE}
+PresentGenes <- vector()
+AbsentGenes <- vector()
+for(gene_index in SelectedGenes){
+  if (any(DMRs$hgnc_symbol %in% gene_index)) {
+    PresentGenes <- c(PresentGenes, gene_index)
+    plotDMRs(bsseq_obj, regions=DMRs[DMRs$hgnc_symbol %in% gene_index,], testCovariate=3, annoTrack=annoTrack, qval = FALSE, stat = FALSE, extend = 5000, main = paste0(gene_index," - ", DMRs[DMRs$hgnc_symbol %in% gene_index,]$ChipSeekerAnn), verbose = FALSE, horizLegend = TRUE, col = c(rep(cellTypes_colors[1:2], each = 4), rep(cellTypes_colors[3:4], each = 3)))
+  } else{ 
+    AbsentGenes <- c(AbsentGenes, gene_index)
+    next}
+}
+```
+
+These genes were found: `r PresentGenes` These genes were not found:
+`r AbsentGenes`
+
+## 4.2 hPGCLCs vs hEGCLCs
+
+```{r}
+comparison <- "hEGCLCsvshPGCLCs"
+DMRs <- DMRs_annotated[[comparison]]
+```
+
+```{r}
+DMRs$DMR <- paste0("DMR", rownames(DMRs))
+DMRs_gr <- makeGRangesFromDataFrame(DMRs, keep.extra.columns = TRUE)
+```
+
+```{r}
+m <- findOverlaps(rowRanges(bsseq_obj), DMRs_gr)
+
+bsseq_obj_subset <- bsseq_obj[queryHits(m),]
+
+rowData(bsseq_obj_subset)$DMR <- DMRs_gr[subjectHits(m), ]$DMR
+rowData(bsseq_obj_subset)$GenomicAnn <- DMRs_gr[subjectHits(m), ]$ChipSeekerAnn
+rowData(bsseq_obj_subset)$Gene <- DMRs_gr[subjectHits(m), ]$hgnc_symbol
+rowData(bsseq_obj_subset)$GeneBiotype <- DMRs_gr[subjectHits(m),]$gene_biotype
+```
+
+```{r}
+rowData(bsseq_obj_subset)$GenomicRegion <- rowData(bsseq_obj_subset)$GenomicAnn
+
+rowData(bsseq_obj_subset)$GenomicRegion[grep(rowData(bsseq_obj_subset)$GenomicRegion, pattern = "Exon")] <- "Exon"
+rowData(bsseq_obj_subset)$GenomicRegion[grep(rowData(bsseq_obj_subset)$GenomicRegion, pattern = "Intron")] <- "Intron"
+```
+
+In total we have `r length(bsseq_obj_subset)` CpGs in the significant DMRs.
+
+_Calculate average methylation of CpGs in each DMR_
+
+```{r}
+assays(bsseq_obj_subset)$Meth <- getMeth(bsseq_obj_subset, type = "raw")
+
+AvgMeth <- aggregate(assays(bsseq_obj_subset)$Meth, list(rowData(bsseq_obj_subset)$DMR), mean, na.rm = T)
+rownames(AvgMeth) <- AvgMeth$Group.1
+AvgMeth <- AvgMeth[, -1]
+
+rowDataSE <- rowData(bsseq_obj_subset)
+rownames(rowDataSE) <- rowData(bsseq_obj_subset)$DMR
+rowDataSE <- rowDataSE[rownames(AvgMeth), ] 
+SE <- SummarizedExperiment(assays=AvgMeth, colData=colData(bsseq_obj_subset), rowData = rowDataSE, )
+
+assays(SE) <- assays(SE) %>% setNames("AvgMeth")
+
+identical(rownames(assay(SE)), rownames(rowData(SE))) #TRUE
+## [1] TRUE
+```
+
+Setting colors
+
+```{r}
+ScaledCols <- c('darkblue', "purple", "white", "lightgoldenrod1", 'goldenrod1')
+
+metadata(SE)$anno_colors <- list(Type = cellTypes_colors,
+                                               GenomicRegion = c ("3' UTR" = "#FFADAD", "5' UTR" = "#FFD6A5", "Distal Intergenic" = "#FDFFB6", "Downstream (<=300bp)" = "#FFFFFC", "Exon" = "#9BF6FF", "Intron" = "#A0C4FF", "Promoter (<=1kb)" = "#BDB2FF", "Promoter (1-2kb)" = "#FFC6FF", "Promoter (2-3kb)" = "#CAFFBF"))
+
+sample_colors <- c("hiPSC_rep1" = "#dd1c77", "hiPSC_rep2" = "#dd1c77", "hiPSC_rep3" = "#dd1c77", "hiPSC_rep4" = "#dd1c77",
+                   "iMeLC_rep1" = "#377eb8", "iMeLC_rep2" = "#377eb8", "iMeLC_rep3" = "#377eb8", "iMeLC_rep4" = "#377eb8",
+                   "hPGCLC_rep1" = "#4daf4a", "hPGCLC_rep2" = "#4daf4a", "hPGCLC_rep3" = "#4daf4a",
+                   "hEGCLC_rep1" = "#ff7f00", "hEGCLC_rep2" = "#ff7f00", "hEGCLC_rep3" = "#ff7f00")
+```
+
+### 4.2.1 Heatmaps
+
+**Without sample clustering**
+
+```{r, fig.width=13, fig.height=12}
+break_coord <- assay(SE) %>% quantile(seq(0,1, by=0.1), na.rm =TRUE)
+ExpCols <- viridisLite::plasma(length(seq(head(break_coord,1), tail(break_coord,1), by=0.2)))
+
+sechm(SE, features = rownames(SE), assayName = "AvgMeth", hmcols=ExpCols, breaks=seq(head(break_coord,1), tail(break_coord,1), by=0.2), show_colnames=TRUE, do.scale=FALSE, column_title = "Methylation Levels in DMRs (averaging CpGs) - hEGCLCs vs hPGCLCs", top_annotation = c("Type"), left_annotation = c("GenomicRegion"), gaps_row = "GenomicRegion", row_title_rot = 0) 
+```
+
+**With sample clustering**
+
+```{r, fig.width=13, fig.height=12}
+sechm(SE, features = rownames(SE), assayName = "AvgMeth", hmcols=ExpCols, breaks=seq(head(break_coord,1), tail(break_coord,1), by=0.2), show_colnames=TRUE, do.scale=FALSE, cluster_cols = TRUE, column_title = "Methylation Levels in DMRs (averaging CpGs) - hEGCLCs vs hPGCLCs", top_annotation = c("Type"), left_annotation = c("GenomicRegion"), gaps_row = "GenomicRegion", row_title_rot = 0) 
+```
+
+### 4.2.2 Violin plots
+
+**Dividing by sample**
+
+```{r, fig.width=10}
+DMRviolin(bsseq_obj = SE, assayName = "AvgMeth", title = "Methylation Levels in DMRs (averaging CpGs) - hEGCLCs vs hPGCLCs", fill = "Genomic region")
+```
+
+**Dividing by genomic region**
+
+```{r, fig.width=10}
+DMRviolin(bsseq_obj = SE, assayName = "AvgMeth", title = "Methylation Levels in DMRs (averaging CpGs) - hEGCLCs vs hPGCLCs", fill = "Sample", colors = sample_colors)
+```
+
+### 4.2.3 Top 20 DMR-associated genes
+
+Useful to visualize single DMR with exon and CpG annotations. Here the
+top 20 significant DMRs are plotted. Rows in DMRs are sorted by
+"areaStat", which is the sum of test statistics of all CpG sites in the
+region. Remember that **we do not have p-value for DMRs because in DMR
+calling, the statistical test is perform for each CpG, and then the
+significant CpG are merged into regions. It is very difficult to
+estimate FDR at the region-level, based on the site level test results
+(p-values or FDR). This is a difficult question for all types of
+genome-wide assays such as the ChIP-seq.**
+
+**Here we can filter for only differentially methylated promoters of
+protein coding genes**
+
+```{r, collapse=TRUE}
+DMRs <- DMRs[grep("Promoter", DMRs$ChipSeekerAnn),] %>% filter(gene_biotype == "protein_coding")
+```
+
+```{r, collapse=TRUE}
+nr_of_top <- 20
+
+if (nrow(DMRs) > 20){nr_plots <- nr_of_top}else{nr_plots <- nrow(DMRs)}
+
+for(i in 1:nr_plots){
+plotDMRs(bsseq_obj, regions=DMRs[i,], testCovariate=3, annoTrack=annoTrack, qval = FALSE, stat = FALSE, extend = 500, main = paste0(DMRs[i,]$hgnc_symbol, " - ", DMRs[i,]$ChipSeekerAnn), verbose = FALSE, horizLegend = TRUE, col = c(rep(cellTypes_colors[1:2], each = 4), rep(cellTypes_colors[3:4], each = 3)))
+}
+```
+
+The genes are: `r DMRs[1:nr_of_top,]$hgnc_symbol`
+
+### 4.2.3 Top 10 DMR-associated genes where there is gain in methylation
+
+Here the top 10 DMRs where methylation is higher in hEGCLCs (and lower
+in hPGCLCs). 
+
+```{r, collapse=TRUE}
+nr_of_top <- 10
+
+if (nrow(DMRs[DMRs$diff.Methy<0, ]) > 10){nr_plots <- nr_of_top}else{nr_plots <- nrow(DMRs[DMRs$diff.Methy<0, ])}
+
+for(i in 1:nr_plots){
+plotDMRs(bsseq_obj, regions=DMRs[DMRs$diff.Methy<0, ][i, ], testCovariate=3, annoTrack=annoTrack, qval = FALSE, stat = FALSE, extend = 5000, main = paste0(DMRs[DMRs$diff.Methy<0, ][i, ]$hgnc_symbol, " - ", DMRs[DMRs$diff.Methy<0, ][i, ]$ChipSeekerAnn), verbose = FALSE, horizLegend = TRUE, col = c(rep(cellTypes_colors[1:2], each = 4), rep(cellTypes_colors[3:4], each = 3)))
+}
+```
+
+The genes are: `r DMRs[DMRs$diff.Methy<0, ][1:10, ]$hgnc_symbol`
+
+### 4.2.4 Top 10 DMR-associated genes where there is loss in methylation
+
+Here the top 10 DMRs where methylation is higher in hPGCLCs (and lower in
+hEGCLCs).
+
+```{r, collapse=TRUE}
+nr_of_top <- 10
+
+if (nrow(DMRs[DMRs$diff.Methy>0, ]) > 10){nr_plots <- nr_of_top}else{nr_plots <- nrow(DMRs[DMRs$diff.Methy>0, ])}
+
+for(i in 1:nr_plots){
+plotDMRs(bsseq_obj, regions=DMRs[DMRs$diff.Methy>0, ][i, ], testCovariate=3, annoTrack=annoTrack, qval = FALSE, stat = FALSE, extend = 5000, main = paste0(DMRs[DMRs$diff.Methy>0, ][i, ]$hgnc_symbol, " - ", DMRs[DMRs$diff.Methy>0, ][i, ]$ChipSeekerAnn), verbose = FALSE, horizLegend = TRUE, col = c(rep(cellTypes_colors[1:2], each = 4), rep(cellTypes_colors[3:4], each = 3)))
+}
+```
+
+The genes are: `r DMRs[DMRs$diff.Methy>0, ][1:10, ]$hgnc_symbol`
+
+### 4.2.5 Exploration of PGC markers and other relevant genes
+
+```{r, collapse=TRUE}
+SelectedGenes <- c("PIWIL2", "NANOS3", "IGF1", "DNMT3L", "PIFO", "SOX15", "CSF3R", "NUMB", "CXCR4")
+```
+
+```{r, collapse=TRUE}
+PresentGenes <- vector()
+AbsentGenes <- vector()
+for(gene_index in SelectedGenes){
+  if (any(DMRs$hgnc_symbol %in% gene_index)) {
+    PresentGenes <- c(PresentGenes, gene_index)
+    plotDMRs(bsseq_obj, regions=DMRs[DMRs$hgnc_symbol %in% gene_index,], testCovariate=3, annoTrack=annoTrack, qval = FALSE, stat = FALSE, extend = 5000, main = paste0(gene_index," - ", DMRs[DMRs$hgnc_symbol %in% gene_index,]$ChipSeekerAnn), verbose = FALSE, horizLegend = TRUE, col = c(rep(cellTypes_colors[1:2], each = 4), rep(cellTypes_colors[3:4], each = 3)))
+  } else{ 
+    AbsentGenes <- c(AbsentGenes, gene_index)
+    next}
+}
+```
+
+These genes were found: `r PresentGenes` These genes were not found:
+`r AbsentGenes`
+
+## 4.3 hiPSCs vs hEGCLCs
+
+```{r}
+comparison <- "hEGCLCsvshiPSCs"
+DMRs <- DMRs_annotated[[comparison]]
+```
+
+```{r}
+DMRs$DMR <- paste0("DMR", rownames(DMRs))
+DMRs_gr <- makeGRangesFromDataFrame(DMRs, keep.extra.columns = TRUE)
+```
+
+```{r}
+m <- findOverlaps(rowRanges(bsseq_obj), DMRs_gr)
+
+bsseq_obj_subset <- bsseq_obj[queryHits(m),]
+
+rowData(bsseq_obj_subset)$DMR <- DMRs_gr[subjectHits(m), ]$DMR
+rowData(bsseq_obj_subset)$GenomicAnn <- DMRs_gr[subjectHits(m), ]$ChipSeekerAnn
+rowData(bsseq_obj_subset)$Gene <- DMRs_gr[subjectHits(m), ]$hgnc_symbol
+rowData(bsseq_obj_subset)$GeneBiotype <- DMRs_gr[subjectHits(m),]$gene_biotype
+```
+
+```{r}
+rowData(bsseq_obj_subset)$GenomicRegion <- rowData(bsseq_obj_subset)$GenomicAnn
+
+rowData(bsseq_obj_subset)$GenomicRegion[grep(rowData(bsseq_obj_subset)$GenomicRegion, pattern = "Exon")] <- "Exon"
+rowData(bsseq_obj_subset)$GenomicRegion[grep(rowData(bsseq_obj_subset)$GenomicRegion, pattern = "Intron")] <- "Intron"
+```
+
+In total we have `r length(bsseq_obj_subset)` CpGs in the significant DMRs.
+
+_Calculate average methylation of CpGs in each DMR_
+
+```{r}
+assays(bsseq_obj_subset)$Meth <- getMeth(bsseq_obj_subset, type = "raw")
+
+AvgMeth <- aggregate(assays(bsseq_obj_subset)$Meth, list(rowData(bsseq_obj_subset)$DMR), mean, na.rm = T)
+rownames(AvgMeth) <- AvgMeth$Group.1
+AvgMeth <- AvgMeth[, -1]
+
+rowDataSE <- rowData(bsseq_obj_subset)
+rownames(rowDataSE) <- rowData(bsseq_obj_subset)$DMR
+rowDataSE <- rowDataSE[rownames(AvgMeth), ] 
+SE <- SummarizedExperiment(assays=AvgMeth, colData=colData(bsseq_obj_subset), rowData = rowDataSE, )
+
+assays(SE) <- assays(SE) %>% setNames("AvgMeth")
+
+identical(rownames(assay(SE)), rownames(rowData(SE))) #TRUE
+## [1] TRUE
+```
+
+Setting colors
+
+```{r}
+ScaledCols <- c('darkblue', "purple", "white", "lightgoldenrod1", 'goldenrod1')
+
+metadata(SE)$anno_colors <- list(Type = cellTypes_colors,
+                                               GenomicRegion = c ("3' UTR" = "#FFADAD", "5' UTR" = "#FFD6A5", "Distal Intergenic" = "#FDFFB6", "Downstream (<=300bp)" = "#FFFFFC", "Exon" = "#9BF6FF", "Intron" = "#A0C4FF", "Promoter (<=1kb)" = "#BDB2FF", "Promoter (1-2kb)" = "#FFC6FF", "Promoter (2-3kb)" = "#CAFFBF"))
+
+sample_colors <- c("hiPSC_rep1" = "#dd1c77", "hiPSC_rep2" = "#dd1c77", "hiPSC_rep3" = "#dd1c77", "hiPSC_rep4" = "#dd1c77",
+                   "iMeLC_rep1" = "#377eb8", "iMeLC_rep2" = "#377eb8", "iMeLC_rep3" = "#377eb8", "iMeLC_rep4" = "#377eb8",
+                   "hPGCLC_rep1" = "#4daf4a", "hPGCLC_rep2" = "#4daf4a", "hPGCLC_rep3" = "#4daf4a",
+                   "hEGCLC_rep1" = "#ff7f00", "hEGCLC_rep2" = "#ff7f00", "hEGCLC_rep3" = "#ff7f00")
+```
+
+### 4.3.1 Heatmaps
+
+**Without sample clustering**
+
+```{r, fig.width=13, fig.height=12}
+break_coord <- assay(SE) %>% quantile(seq(0,1, by=0.1), na.rm =TRUE)
+ExpCols <- viridisLite::plasma(length(seq(head(break_coord,1), tail(break_coord,1), by=0.2)))
+
+sechm(SE, features = rownames(SE), assayName = "AvgMeth", hmcols=ExpCols, breaks=seq(head(break_coord,1), tail(break_coord,1), by=0.2), show_colnames=TRUE, do.scale=FALSE, column_title = "Methylation Levels in DMRs (averaging CpGs) - hEGCLCs vs hiPSCs", top_annotation = c("Type"), left_annotation = c("GenomicRegion"), gaps_row = "GenomicRegion", row_title_rot = 0) 
+```
+
+**With sample clustering**
+
+```{r, fig.width=13, fig.height=12}
+sechm(SE, features = rownames(SE), assayName = "AvgMeth", hmcols=ExpCols, breaks=seq(head(break_coord,1), tail(break_coord,1), by=0.2), show_colnames=TRUE, do.scale=FALSE, cluster_cols = TRUE, column_title = "Methylation Levels in DMRs (averaging CpGs) - hEGCLCs vs hiPSCs", top_annotation = c("Type"), left_annotation = c("GenomicRegion"), gaps_row = "GenomicRegion", row_title_rot = 0) 
+```
+
+### 4.3.2 Violin plots
+
+**Dividing by sample**
+
+```{r, fig.width=10}
+DMRviolin(bsseq_obj = SE, assayName = "AvgMeth", title = "Methylation Levels in DMRs (averaging CpGs) - hEGCLCs vs hiPSCs", fill = "Genomic region")
+```
+
+**Dividing by genomic region**
+
+```{r, fig.width=10}
+DMRviolin(bsseq_obj = SE, assayName = "AvgMeth", title = "Methylation Levels in DMRs (averaging CpGs) - hEGCLCs vs hiPSCs", fill = "Sample", colors = sample_colors)
+```
+
+### 4.3.3 Top 20 DMR-associated genes
+
+Useful to visualize single DMR with exon and CpG annotations. Here the
+top 20 significant DMRs are plotted. Rows in DMRs are sorted by
+"areaStat", which is the sum of test statistics of all CpG sites in the
+region. Remember that **we do not have p-value for DMRs because in DMR
+calling, the statistical test is perform for each CpG, and then the
+significant CpG are merged into regions. It is very difficult to
+estimate FDR at the region-level, based on the site level test results
+(p-values or FDR). This is a difficult question for all types of
+genome-wide assays such as the ChIP-seq.**
+
+**Here we can filter for only differentially methylated promoters of
+protein coding genes**
+
+```{r, collapse=TRUE}
+DMRs <- DMRs[grep("Promoter", DMRs$ChipSeekerAnn),] %>% filter(gene_biotype == "protein_coding")
+```
+
+```{r, collapse=TRUE}
+nr_of_top <- 20
+
+if (nrow(DMRs) > 20){nr_plots <- nr_of_top}else{nr_plots <- nrow(DMRs)}
+
+for(i in 1:nr_plots){
+plotDMRs(bsseq_obj, regions=DMRs[i,], testCovariate=3, annoTrack=annoTrack, qval = FALSE, stat = FALSE, extend = 500, main = paste0(DMRs[i,]$hgnc_symbol, " - ", DMRs[i,]$ChipSeekerAnn), verbose = FALSE, horizLegend = TRUE, col = c(rep(cellTypes_colors[1:2], each = 4), rep(cellTypes_colors[3:4], each = 3)))
+}
+```
+
+The genes are: `r DMRs[1:nr_of_top,]$hgnc_symbol`
+
+### 4.3.3 Top 10 DMR-associated genes where there is gain in methylation
+
+Here the top 10 DMRs where methylation is higher in hEGCLCs (and lower
+in hiPSCs).
+
+```{r, collapse=TRUE}
+nr_of_top <- 10
+
+if (nrow(DMRs[DMRs$diff.Methy<0, ]) > 10){nr_plots <- nr_of_top}else{nr_plots <- nrow(DMRs[DMRs$diff.Methy<0, ])}
+
+for(i in 1:nr_plots){
+plotDMRs(bsseq_obj, regions=DMRs[DMRs$diff.Methy<0, ][i, ], testCovariate=3, annoTrack=annoTrack, qval = FALSE, stat = FALSE, extend = 5000, main = paste0(DMRs[DMRs$diff.Methy<0, ][i, ]$hgnc_symbol, " - ", DMRs[DMRs$diff.Methy<0, ][i, ]$ChipSeekerAnn), verbose = FALSE, horizLegend = TRUE, col = c(rep(cellTypes_colors[1:2], each = 4), rep(cellTypes_colors[3:4], each = 3)))
+}
+```
+
+The genes are: `r DMRs[DMRs$diff.Methy<0, ][1:10, ]$hgnc_symbol`
+
+### 4.3.4 Top 10 DMR-associated genes where there is loss in methylation
+
+Here the top 10 DMRs where methylation is higher in hiPSCs (and lower in
+hEGCLCs).
+
+```{r, collapse=TRUE}
+nr_of_top <- 10
+
+if (nrow(DMRs[DMRs$diff.Methy>0, ]) > 10){nr_plots <- nr_of_top}else{nr_plots <- nrow(DMRs[DMRs$diff.Methy>0, ])}
+
+for(i in 1:nr_plots){
+plotDMRs(bsseq_obj, regions=DMRs[DMRs$diff.Methy>0, ][i, ], testCovariate=3, annoTrack=annoTrack, qval = FALSE, stat = FALSE, extend = 5000, main = paste0(DMRs[DMRs$diff.Methy>0, ][i, ]$hgnc_symbol, " - ", DMRs[DMRs$diff.Methy>0, ][i, ]$ChipSeekerAnn), verbose = FALSE, horizLegend = TRUE, col = c(rep(cellTypes_colors[1:2], each = 4), rep(cellTypes_colors[3:4], each = 3)))
+}
+```
+
+The genes are: `r DMRs[DMRs$diff.Methy>0, ][1:10, ]$hgnc_symbol`
+
+### 4.3.5 Exploration of PGC markers and other relevant genes
+
+```{r, collapse=TRUE}
+SelectedGenes <- c("PIWIL2", "NANOS3", "IGF1", "DNMT3L", "PIFO", "SOX15", "CSF3R", "NUMB", "CXCR4")
+```
+
+```{r, collapse=TRUE}
+PresentGenes <- vector()
+AbsentGenes <- vector()
+for(gene_index in SelectedGenes){
+  if (any(DMRs$hgnc_symbol %in% gene_index)) {
+    PresentGenes <- c(PresentGenes, gene_index)
+    plotDMRs(bsseq_obj, regions=DMRs[DMRs$hgnc_symbol %in% gene_index,], testCovariate=3, annoTrack=annoTrack, qval = FALSE, stat = FALSE, extend = 5000, main = paste0(gene_index," - ", DMRs[DMRs$hgnc_symbol %in% gene_index,]$ChipSeekerAnn), verbose = FALSE, horizLegend = TRUE, col = c(rep(cellTypes_colors[1:2], each = 4), rep(cellTypes_colors[3:4], each = 3)))
+  } else{ 
+    AbsentGenes <- c(AbsentGenes, gene_index)
+    next}
+}
+```
+
+These genes were found: `r PresentGenes` These genes were not found:
+`r AbsentGenes`
+
+## 4.4  iMeLCs vs hiPSCs 
+
+```{r}
+comparison <- "hiPSCsvsiMeLCs"
+DMRs <- DMRs_annotated[[comparison]]
+```
+
+```{r}
+DMRs$DMR <- paste0("DMR", rownames(DMRs))
+DMRs_gr <- makeGRangesFromDataFrame(DMRs, keep.extra.columns = TRUE)
+```
+
+```{r}
+m <- findOverlaps(rowRanges(bsseq_obj), DMRs_gr)
+
+bsseq_obj_subset <- bsseq_obj[queryHits(m),]
+
+rowData(bsseq_obj_subset)$DMR <- DMRs_gr[subjectHits(m), ]$DMR
+rowData(bsseq_obj_subset)$GenomicAnn <- DMRs_gr[subjectHits(m), ]$ChipSeekerAnn
+rowData(bsseq_obj_subset)$Gene <- DMRs_gr[subjectHits(m), ]$hgnc_symbol
+rowData(bsseq_obj_subset)$GeneBiotype <- DMRs_gr[subjectHits(m),]$gene_biotype
+```
+
+```{r}
+rowData(bsseq_obj_subset)$GenomicRegion <- rowData(bsseq_obj_subset)$GenomicAnn
+
+rowData(bsseq_obj_subset)$GenomicRegion[grep(rowData(bsseq_obj_subset)$GenomicRegion, pattern = "Exon")] <- "Exon"
+rowData(bsseq_obj_subset)$GenomicRegion[grep(rowData(bsseq_obj_subset)$GenomicRegion, pattern = "Intron")] <- "Intron"
+```
+
+In total we have `r length(bsseq_obj_subset)` CpGs in the significant DMRs.
+
+_Calculate average methylation of CpGs in each DMR_
+
+```{r}
+assays(bsseq_obj_subset)$Meth <- getMeth(bsseq_obj_subset, type = "raw")
+
+AvgMeth <- aggregate(assays(bsseq_obj_subset)$Meth, list(rowData(bsseq_obj_subset)$DMR), mean, na.rm = T)
+rownames(AvgMeth) <- AvgMeth$Group.1
+AvgMeth <- AvgMeth[, -1]
+
+rowDataSE <- rowData(bsseq_obj_subset)
+rownames(rowDataSE) <- rowData(bsseq_obj_subset)$DMR
+rowDataSE <- rowDataSE[rownames(AvgMeth), ] 
+SE <- SummarizedExperiment(assays=AvgMeth, colData=colData(bsseq_obj_subset), rowData = rowDataSE, )
+
+assays(SE) <- assays(SE) %>% setNames("AvgMeth")
+
+identical(rownames(assay(SE)), rownames(rowData(SE))) #TRUE
+## [1] TRUE
+```
+
+Setting colors
+
+```{r}
+ScaledCols <- c('darkblue', "purple", "white", "lightgoldenrod1", 'goldenrod1')
+
+metadata(SE)$anno_colors <- list(Type = cellTypes_colors,
+                                               GenomicRegion = c ("3' UTR" = "#FFADAD", "5' UTR" = "#FFD6A5", "Distal Intergenic" = "#FDFFB6", "Downstream (<=300bp)" = "#FFFFFC", "Exon" = "#9BF6FF", "Intron" = "#A0C4FF", "Promoter (<=1kb)" = "#BDB2FF", "Promoter (1-2kb)" = "#FFC6FF", "Promoter (2-3kb)" = "#CAFFBF"))
+
+sample_colors <- c("hiPSC_rep1" = "#dd1c77", "hiPSC_rep2" = "#dd1c77", "hiPSC_rep3" = "#dd1c77", "hiPSC_rep4" = "#dd1c77",
+                   "iMeLC_rep1" = "#377eb8", "iMeLC_rep2" = "#377eb8", "iMeLC_rep3" = "#377eb8", "iMeLC_rep4" = "#377eb8",
+                   "hPGCLC_rep1" = "#4daf4a", "hPGCLC_rep2" = "#4daf4a", "hPGCLC_rep3" = "#4daf4a",
+                   "hEGCLC_rep1" = "#ff7f00", "hEGCLC_rep2" = "#ff7f00", "hEGCLC_rep3" = "#ff7f00")
+```
+
+### 4.4.1 Heatmaps
+
+**Without sample clustering**
+
+```{r, fig.width=13, fig.height=12}
+break_coord <- assay(SE) %>% quantile(seq(0,1, by=0.1), na.rm =TRUE)
+ExpCols <- viridisLite::plasma(length(seq(head(break_coord,1), tail(break_coord,1), by=0.2)))
+
+sechm(SE, features = rownames(SE), assayName = "AvgMeth", hmcols=ExpCols, breaks=seq(head(break_coord,1), tail(break_coord,1), by=0.2), show_colnames=TRUE, do.scale=FALSE, column_title = "Methylation Levels in DMRs (averaging CpGs) - iMeLCs vs hiPSCs", top_annotation = c("Type"), left_annotation = c("GenomicRegion"), gaps_row = "GenomicRegion", row_title_rot = 0) 
+```
+
+**With sample clustering**
+
+```{r, fig.width=13, fig.height=12}
+sechm(SE, features = rownames(SE), assayName = "AvgMeth", hmcols=ExpCols, breaks=seq(head(break_coord,1), tail(break_coord,1), by=0.2), show_colnames=TRUE, do.scale=FALSE, cluster_cols = TRUE, column_title = "Methylation Levels in DMRs (averaging CpGs) - iMeLCs vs hiPSCs", top_annotation = c("Type"), left_annotation = c("GenomicRegion"), gaps_row = "GenomicRegion", row_title_rot = 0) 
+```
+
+### 4.4.2 Violin plots
+
+**Dividing by sample**
+
+```{r, fig.width=10}
+DMRviolin(bsseq_obj = SE, assayName = "AvgMeth", title = "Methylation Levels in DMRs (averaging CpGs) - iMeLCs vs hiPSCs", fill = "Genomic region")
+```
+
+**Dividing by genomic region**
+
+```{r, fig.width=10}
+DMRviolin(bsseq_obj = SE, assayName = "AvgMeth", title = "Methylation Levels in DMRs (averaging CpGs) - iMeLCs vs hiPSCs", fill = "Sample", colors = sample_colors)
+```
+
+### 4.4.3 Top 20 DMR-associated genes
+
+Useful to visualize single DMR with exon and CpG annotations. Here the
+top 20 significant DMRs are plotted. Rows in DMRs are sorted by
+"areaStat", which is the sum of test statistics of all CpG sites in the
+region. Remember that **we do not have p-value for DMRs because in DMR
+calling, the statistical test is perform for each CpG, and then the
+significant CpG are merged into regions. It is very difficult to
+estimate FDR at the region-level, based on the site level test results
+(p-values or FDR). This is a difficult question for all types of
+genome-wide assays such as the ChIP-seq.**
+
+**Here we can filter for only differentially methylated promoters of
+protein coding genes**
+
+```{r, collapse=TRUE}
+DMRs <- DMRs[grep("Promoter", DMRs$ChipSeekerAnn),] %>% filter(gene_biotype == "protein_coding")
+```
+
+```{r, collapse=TRUE}
+nr_of_top <- 20
+
+if (nrow(DMRs) > 20){nr_plots <- nr_of_top}else{nr_plots <- nrow(DMRs)}
+
+for(i in 1:nr_plots){
+plotDMRs(bsseq_obj, regions=DMRs[i,], testCovariate=3, annoTrack=annoTrack, qval = FALSE, stat = FALSE, extend = 500, main = paste0(DMRs[i,]$hgnc_symbol, " - ", DMRs[i,]$ChipSeekerAnn), verbose = FALSE, horizLegend = TRUE, col = c(rep(cellTypes_colors[1:2], each = 4), rep(cellTypes_colors[3:4], each = 3)))
+}
+```
+
+The genes are: `r DMRs[1:nr_of_top,]$hgnc_symbol`
+
+### 4.4.3 Top 10 DMR-associated genes where there is gain in methylation
+
+Here the top 10 DMRs where methylation is higher in iMeLCs (and lower
+in hiPSCs).
+
+```{r, collapse=TRUE}
+nr_of_top <- 10
+
+if (nrow(DMRs[DMRs$diff.Methy<0, ]) > 10){nr_plots <- nr_of_top}else{nr_plots <- nrow(DMRs[DMRs$diff.Methy<0, ])}
+
+# for(i in 1:nr_plots){
+# plotDMRs(bsseq_obj, regions=DMRs[DMRs$diff.Methy<0, ][i, ], testCovariate=3, annoTrack=annoTrack, qval = FALSE, stat = FALSE, extend = 5000, main = paste0(DMRs[DMRs$diff.Methy<0, ][i, ]$hgnc_symbol, " - ", DMRs[DMRs$diff.Methy<0, ][i, ]$ChipSeekerAnn), verbose = FALSE, horizLegend = TRUE, col = c(rep(cellTypes_colors[1:2], each = 4), rep(cellTypes_colors[3:4], each = 3)))
+# }
+```
+
+The genes are: `r DMRs[DMRs$diff.Methy<0, ][1:10, ]$hgnc_symbol`
+
+### 4.4.4 Top 10 DMR-associated genes where there is loss in methylation
+
+Here the top 10 DMRs where methylation is higher in hiPSCs (and lower in
+iMeLCs).
+
+```{r, collapse=TRUE}
+nr_of_top <- 10
+
+if (nrow(DMRs[DMRs$diff.Methy>0, ]) > 10){nr_plots <- nr_of_top}else{nr_plots <- nrow(DMRs[DMRs$diff.Methy>0, ])}
+
+for(i in 1:nr_plots){
+plotDMRs(bsseq_obj, regions=DMRs[DMRs$diff.Methy>0, ][i, ], testCovariate=3, annoTrack=annoTrack, qval = FALSE, stat = FALSE, extend = 5000, main = paste0(DMRs[DMRs$diff.Methy>0, ][i, ]$hgnc_symbol, " - ", DMRs[DMRs$diff.Methy>0, ][i, ]$ChipSeekerAnn), verbose = FALSE, horizLegend = TRUE, col = c(rep(cellTypes_colors[1:2], each = 4), rep(cellTypes_colors[3:4], each = 3)))
+}
+```
+
+The genes are: `r DMRs[DMRs$diff.Methy>0, ][1:10, ]$hgnc_symbol`
+
+### 4.4.5 Exploration of PGC markers and other relevant genes
+
+```{r, collapse=TRUE}
+SelectedGenes <- c("PIWIL2", "NANOS3", "IGF1", "DNMT3L", "PIFO", "SOX15", "CSF3R", "NUMB", "CXCR4")
+```
+
+```{r, collapse=TRUE}
+PresentGenes <- vector()
+AbsentGenes <- vector()
+for(gene_index in SelectedGenes){
+  if (any(DMRs$hgnc_symbol %in% gene_index)) {
+    PresentGenes <- c(PresentGenes, gene_index)
+    plotDMRs(bsseq_obj, regions=DMRs[DMRs$hgnc_symbol %in% gene_index,], testCovariate=3, annoTrack=annoTrack, qval = FALSE, stat = FALSE, extend = 5000, main = paste0(gene_index," - ", DMRs[DMRs$hgnc_symbol %in% gene_index,]$ChipSeekerAnn), verbose = FALSE, horizLegend = TRUE, col = c(rep(cellTypes_colors[1:2], each = 4), rep(cellTypes_colors[3:4], each = 3)))
+  } else{ 
+    AbsentGenes <- c(AbsentGenes, gene_index)
+    next}
+}
+```
+
+These genes were found: `r PresentGenes` These genes were not found:
+`r AbsentGenes`
+
+## 4.5 hPGCLCs vs iMeLCs 
+
+```{r}
+comparison <- "iMeLCsvshPGCLCs"
+DMRs <- DMRs_annotated[[comparison]]
+```
+
+```{r}
+DMRs$DMR <- paste0("DMR", rownames(DMRs))
+DMRs_gr <- makeGRangesFromDataFrame(DMRs, keep.extra.columns = TRUE)
+```
+
+```{r}
+m <- findOverlaps(rowRanges(bsseq_obj), DMRs_gr)
+
+bsseq_obj_subset <- bsseq_obj[queryHits(m),]
+
+rowData(bsseq_obj_subset)$DMR <- DMRs_gr[subjectHits(m), ]$DMR
+rowData(bsseq_obj_subset)$GenomicAnn <- DMRs_gr[subjectHits(m), ]$ChipSeekerAnn
+rowData(bsseq_obj_subset)$Gene <- DMRs_gr[subjectHits(m), ]$hgnc_symbol
+rowData(bsseq_obj_subset)$GeneBiotype <- DMRs_gr[subjectHits(m),]$gene_biotype
+```
+
+```{r}
+rowData(bsseq_obj_subset)$GenomicRegion <- rowData(bsseq_obj_subset)$GenomicAnn
+
+rowData(bsseq_obj_subset)$GenomicRegion[grep(rowData(bsseq_obj_subset)$GenomicRegion, pattern = "Exon")] <- "Exon"
+rowData(bsseq_obj_subset)$GenomicRegion[grep(rowData(bsseq_obj_subset)$GenomicRegion, pattern = "Intron")] <- "Intron"
+```
+
+In total we have `r length(bsseq_obj_subset)` CpGs in the significant DMRs.
+
+_Calculate average methylation of CpGs in each DMR_
+
+```{r}
+assays(bsseq_obj_subset)$Meth <- getMeth(bsseq_obj_subset, type = "raw")
+
+AvgMeth <- aggregate(assays(bsseq_obj_subset)$Meth, list(rowData(bsseq_obj_subset)$DMR), mean, na.rm = T)
+rownames(AvgMeth) <- AvgMeth$Group.1
+AvgMeth <- AvgMeth[, -1]
+
+rowDataSE <- rowData(bsseq_obj_subset)
+rownames(rowDataSE) <- rowData(bsseq_obj_subset)$DMR
+rowDataSE <- rowDataSE[rownames(AvgMeth), ] 
+SE <- SummarizedExperiment(assays=AvgMeth, colData=colData(bsseq_obj_subset), rowData = rowDataSE, )
+
+assays(SE) <- assays(SE) %>% setNames("AvgMeth")
+
+identical(rownames(assay(SE)), rownames(rowData(SE))) #TRUE
+## [1] TRUE
+```
+
+Setting colors
+
+```{r}
+ScaledCols <- c('darkblue', "purple", "white", "lightgoldenrod1", 'goldenrod1')
+
+metadata(SE)$anno_colors <- list(Type = cellTypes_colors,
+                                               GenomicRegion = c ("3' UTR" = "#FFADAD", "5' UTR" = "#FFD6A5", "Distal Intergenic" = "#FDFFB6", "Downstream (<=300bp)" = "#FFFFFC", "Exon" = "#9BF6FF", "Intron" = "#A0C4FF", "Promoter (<=1kb)" = "#BDB2FF", "Promoter (1-2kb)" = "#FFC6FF", "Promoter (2-3kb)" = "#CAFFBF"))
+
+sample_colors <- c("hiPSC_rep1" = "#dd1c77", "hiPSC_rep2" = "#dd1c77", "hiPSC_rep3" = "#dd1c77", "hiPSC_rep4" = "#dd1c77",
+                   "iMeLC_rep1" = "#377eb8", "iMeLC_rep2" = "#377eb8", "iMeLC_rep3" = "#377eb8", "iMeLC_rep4" = "#377eb8",
+                   "hPGCLC_rep1" = "#4daf4a", "hPGCLC_rep2" = "#4daf4a", "hPGCLC_rep3" = "#4daf4a",
+                   "hEGCLC_rep1" = "#ff7f00", "hEGCLC_rep2" = "#ff7f00", "hEGCLC_rep3" = "#ff7f00")
+```
+
+### 4.5.1 Heatmaps
+
+**Without sample clustering**
+
+```{r, fig.width=13, fig.height=12}
+break_coord <- assay(SE) %>% quantile(seq(0,1, by=0.1), na.rm =TRUE)
+ExpCols <- viridisLite::plasma(length(seq(head(break_coord,1), tail(break_coord,1), by=0.2)))
+
+sechm(SE, features = rownames(SE), assayName = "AvgMeth", hmcols=ExpCols, breaks=seq(head(break_coord,1), tail(break_coord,1), by=0.2), show_colnames=TRUE, do.scale=FALSE, column_title = "Methylation Levels in DMRs (averaging CpGs) - hPGCLCs vs iMeLCs", top_annotation = c("Type"), left_annotation = c("GenomicRegion"), gaps_row = "GenomicRegion", row_title_rot = 0) 
+```
+
+**With sample clustering**
+
+```{r, fig.width=13, fig.height=12}
+sechm(SE, features = rownames(SE), assayName = "AvgMeth", hmcols=ExpCols, breaks=seq(head(break_coord,1), tail(break_coord,1), by=0.2), show_colnames=TRUE, do.scale=FALSE, cluster_cols = TRUE, column_title = "Methylation Levels in DMRs (averaging CpGs) - hPGCLCs vs iMeLCs", top_annotation = c("Type"), left_annotation = c("GenomicRegion"), gaps_row = "GenomicRegion", row_title_rot = 0) 
+```
+
+### 4.5.2 Violin plots
+
+**Dividing by sample**
+
+```{r, fig.width=10}
+DMRviolin(bsseq_obj = SE, assayName = "AvgMeth", title = "Methylation Levels in DMRs (averaging CpGs) - hPGCLCs vs iMeLCs", fill = "Genomic region")
+```
+
+**Dividing by genomic region**
+
+```{r, fig.width=10}
+DMRviolin(bsseq_obj = SE, assayName = "AvgMeth", title = "Methylation Levels in DMRs (averaging CpGs) - hPGCLCs vs iMeLCs", fill = "Sample", colors = sample_colors)
+```
+
+### 4.5.3 Top 20 DMR-associated genes
+
+Useful to visualize single DMR with exon and CpG annotations. Here the
+top 20 significant DMRs are plotted. Rows in DMRs are sorted by
+"areaStat", which is the sum of test statistics of all CpG sites in the
+region. Remember that **we do not have p-value for DMRs because in DMR
+calling, the statistical test is perform for each CpG, and then the
+significant CpG are merged into regions. It is very difficult to
+estimate FDR at the region-level, based on the site level test results
+(p-values or FDR). This is a difficult question for all types of
+genome-wide assays such as the ChIP-seq.**
+
+**Here we can filter for only differentially methylated promoters of
+protein coding genes**
+
+```{r, collapse=TRUE}
+DMRs <- DMRs[grep("Promoter", DMRs$ChipSeekerAnn),] %>% filter(gene_biotype == "protein_coding")
+```
+
+```{r, collapse=TRUE}
+nr_of_top <- 20
+
+if (nrow(DMRs) > 20){nr_plots <- nr_of_top}else{nr_plots <- nrow(DMRs)}
+
+for(i in 1:nr_plots){
+plotDMRs(bsseq_obj, regions=DMRs[i,], testCovariate=3, annoTrack=annoTrack, qval = FALSE, stat = FALSE, extend = 500, main = paste0(DMRs[i,]$hgnc_symbol, " - ", DMRs[i,]$ChipSeekerAnn), verbose = FALSE, horizLegend = TRUE, col = c(rep(cellTypes_colors[1:2], each = 4), rep(cellTypes_colors[3:4], each = 3)))
+}
+```
+
+The genes are: `r DMRs[1:nr_of_top,]$hgnc_symbol`
+
+### 4.5.3 Top 10 DMR-associated genes where there is gain in methylation
+
+Here the top 10 DMRs where methylation is higher in hPGCLCs (and lower
+in iMeLCs).
+
+```{r, collapse=TRUE}
+nr_of_top <- 10
+
+if (nrow(DMRs[DMRs$diff.Methy<0, ]) > 10){nr_plots <- nr_of_top}else{nr_plots <- nrow(DMRs[DMRs$diff.Methy<0, ])}
+
+for(i in 1:nr_plots){
+plotDMRs(bsseq_obj, regions=DMRs[DMRs$diff.Methy<0, ][i, ], testCovariate=3, annoTrack=annoTrack, qval = FALSE, stat = FALSE, extend = 5000, main = paste0(DMRs[DMRs$diff.Methy<0, ][i, ]$hgnc_symbol, " - ", DMRs[DMRs$diff.Methy<0, ][i, ]$ChipSeekerAnn), verbose = FALSE, horizLegend = TRUE, col = c(rep(cellTypes_colors[1:2], each = 4), rep(cellTypes_colors[3:4], each = 3)))
+}
+```
+
+The genes are: `r DMRs[DMRs$diff.Methy<0, ][1:10, ]$hgnc_symbol`
+
+### 4.5.4 Top 10 DMR-associated genes where there is loss in methylation
+
+Here the top 10 DMRs where methylation is higher in iMeLCs (and lower in
+hPGCLCs).
+
+```{r, collapse=TRUE}
+nr_of_top <- 10
+
+if (nrow(DMRs[DMRs$diff.Methy>0, ]) > 10){nr_plots <- nr_of_top}else{nr_plots <- nrow(DMRs[DMRs$diff.Methy>0, ])}
+
+for(i in 1:nr_plots){
+plotDMRs(bsseq_obj, regions=DMRs[DMRs$diff.Methy>0, ][i, ], testCovariate=3, annoTrack=annoTrack, qval = FALSE, stat = FALSE, extend = 5000, main = paste0(DMRs[DMRs$diff.Methy>0, ][i, ]$hgnc_symbol, " - ", DMRs[DMRs$diff.Methy>0, ][i, ]$ChipSeekerAnn), verbose = FALSE, horizLegend = TRUE, col = c(rep(cellTypes_colors[1:2], each = 4), rep(cellTypes_colors[3:4], each = 3)))
+}
+```
+
+The genes are: `r DMRs[DMRs$diff.Methy>0, ][1:10, ]$hgnc_symbol`
+
+### 4.5.5 Exploration of PGC markers and other relevant genes
+
+```{r, collapse=TRUE}
+SelectedGenes <- c("PIWIL2", "NANOS3", "IGF1", "DNMT3L", "PIFO", "SOX15", "CSF3R", "NUMB", "CXCR4")
+```
+
+```{r, collapse=TRUE}
+PresentGenes <- vector()
+AbsentGenes <- vector()
+for(gene_index in SelectedGenes){
+  if (any(DMRs$hgnc_symbol %in% gene_index)) {
+    PresentGenes <- c(PresentGenes, gene_index)
+    plotDMRs(bsseq_obj, regions=DMRs[DMRs$hgnc_symbol %in% gene_index,], testCovariate=3, annoTrack=annoTrack, qval = FALSE, stat = FALSE, extend = 5000, main = paste0(gene_index," - ", DMRs[DMRs$hgnc_symbol %in% gene_index,]$ChipSeekerAnn), verbose = FALSE, horizLegend = TRUE, col = c(rep(cellTypes_colors[1:2], each = 4), rep(cellTypes_colors[3:4], each = 3)))
+  } else{ 
+    AbsentGenes <- c(AbsentGenes, gene_index)
+    next}
+}
+```
+
+These genes were found: `r PresentGenes` These genes were not found:
+`r AbsentGenes`
+
+## 4.6 iMeLCs vs hEGCLCs
+
+```{r}
+comparison <- "hEGCLCsvsiMeLCs"
+DMRs <- DMRs_annotated[[comparison]]
+```
+
+```{r}
+DMRs$DMR <- paste0("DMR", rownames(DMRs))
+DMRs_gr <- makeGRangesFromDataFrame(DMRs, keep.extra.columns = TRUE)
+```
+
+```{r}
+m <- findOverlaps(rowRanges(bsseq_obj), DMRs_gr)
+
+bsseq_obj_subset <- bsseq_obj[queryHits(m),]
+
+rowData(bsseq_obj_subset)$DMR <- DMRs_gr[subjectHits(m), ]$DMR
+rowData(bsseq_obj_subset)$GenomicAnn <- DMRs_gr[subjectHits(m), ]$ChipSeekerAnn
+rowData(bsseq_obj_subset)$Gene <- DMRs_gr[subjectHits(m), ]$hgnc_symbol
+rowData(bsseq_obj_subset)$GeneBiotype <- DMRs_gr[subjectHits(m),]$gene_biotype
+```
+
+```{r}
+rowData(bsseq_obj_subset)$GenomicRegion <- rowData(bsseq_obj_subset)$GenomicAnn
+
+rowData(bsseq_obj_subset)$GenomicRegion[grep(rowData(bsseq_obj_subset)$GenomicRegion, pattern = "Exon")] <- "Exon"
+rowData(bsseq_obj_subset)$GenomicRegion[grep(rowData(bsseq_obj_subset)$GenomicRegion, pattern = "Intron")] <- "Intron"
+```
+
+In total we have `r length(bsseq_obj_subset)` CpGs in the significant DMRs.
+
+_Calculate average methylation of CpGs in each DMR_
+
+```{r}
+assays(bsseq_obj_subset)$Meth <- getMeth(bsseq_obj_subset, type = "raw")
+
+AvgMeth <- aggregate(assays(bsseq_obj_subset)$Meth, list(rowData(bsseq_obj_subset)$DMR), mean, na.rm = T)
+rownames(AvgMeth) <- AvgMeth$Group.1
+AvgMeth <- AvgMeth[, -1]
+
+rowDataSE <- rowData(bsseq_obj_subset)
+rownames(rowDataSE) <- rowData(bsseq_obj_subset)$DMR
+rowDataSE <- rowDataSE[rownames(AvgMeth), ] 
+SE <- SummarizedExperiment(assays=AvgMeth, colData=colData(bsseq_obj_subset), rowData = rowDataSE, )
+
+assays(SE) <- assays(SE) %>% setNames("AvgMeth")
+
+identical(rownames(assay(SE)), rownames(rowData(SE))) #TRUE
+## [1] TRUE
+```
+
+Setting colors
+
+```{r}
+ScaledCols <- c('darkblue', "purple", "white", "lightgoldenrod1", 'goldenrod1')
+
+metadata(SE)$anno_colors <- list(Type = cellTypes_colors,
+                                               GenomicRegion = c ("3' UTR" = "#FFADAD", "5' UTR" = "#FFD6A5", "Distal Intergenic" = "#FDFFB6", "Downstream (<=300bp)" = "#FFFFFC", "Exon" = "#9BF6FF", "Intron" = "#A0C4FF", "Promoter (<=1kb)" = "#BDB2FF", "Promoter (1-2kb)" = "#FFC6FF", "Promoter (2-3kb)" = "#CAFFBF"))
+
+sample_colors <- c("hiPSC_rep1" = "#dd1c77", "hiPSC_rep2" = "#dd1c77", "hiPSC_rep3" = "#dd1c77", "hiPSC_rep4" = "#dd1c77",
+                   "iMeLC_rep1" = "#377eb8", "iMeLC_rep2" = "#377eb8", "iMeLC_rep3" = "#377eb8", "iMeLC_rep4" = "#377eb8",
+                   "hPGCLC_rep1" = "#4daf4a", "hPGCLC_rep2" = "#4daf4a", "hPGCLC_rep3" = "#4daf4a",
+                   "hEGCLC_rep1" = "#ff7f00", "hEGCLC_rep2" = "#ff7f00", "hEGCLC_rep3" = "#ff7f00")
+```
+
+### 4.6.1 Heatmaps
+
+**Without sample clustering**
+
+```{r, fig.width=13, fig.height=12}
+break_coord <- assay(SE) %>% quantile(seq(0,1, by=0.1), na.rm =TRUE)
+ExpCols <- viridisLite::plasma(length(seq(head(break_coord,1), tail(break_coord,1), by=0.2)))
+
+sechm(SE, features = rownames(SE), assayName = "AvgMeth", hmcols=ExpCols, breaks=seq(head(break_coord,1), tail(break_coord,1), by=0.2), show_colnames=TRUE, do.scale=FALSE, column_title = "Methylation Levels in DMRs (averaging CpGs) - hPGCLCs vs iMeLCs", top_annotation = c("Type"), left_annotation = c("GenomicRegion"), gaps_row = "GenomicRegion", row_title_rot = 0) 
+```
+
+**With sample clustering**
+
+```{r, fig.width=13, fig.height=12}
+sechm(SE, features = rownames(SE), assayName = "AvgMeth", hmcols=ExpCols, breaks=seq(head(break_coord,1), tail(break_coord,1), by=0.2), show_colnames=TRUE, do.scale=FALSE, cluster_cols = TRUE, column_title = "Methylation Levels in DMRs (averaging CpGs) - hPGCLCs vs iMeLCs", top_annotation = c("Type"), left_annotation = c("GenomicRegion"), gaps_row = "GenomicRegion", row_title_rot = 0) 
+```
+
+### 4.6.2 Violin plots
+
+**Dividing by sample**
+
+```{r, fig.width=10}
+DMRviolin(bsseq_obj = SE, assayName = "AvgMeth", title = "Methylation Levels in DMRs (averaging CpGs) - hEGCLCs vs iMeLCs", fill = "Genomic region")
+```
+
+**Dividing by genomic region**
+
+```{r, fig.width=10}
+DMRviolin(bsseq_obj = SE, assayName = "AvgMeth", title = "Methylation Levels in DMRs (averaging CpGs) - hEGCLCs vs iMeLCs", fill = "Sample", colors = sample_colors)
+```
+
+### 4.6.3 Top 20 DMR-associated genes
+
+Useful to visualize single DMR with exon and CpG annotations. Here the
+top 20 significant DMRs are plotted. Rows in DMRs are sorted by
+"areaStat", which is the sum of test statistics of all CpG sites in the
+region. Remember that **we do not have p-value for DMRs because in DMR
+calling, the statistical test is perform for each CpG, and then the
+significant CpG are merged into regions. It is very difficult to
+estimate FDR at the region-level, based on the site level test results
+(p-values or FDR). This is a difficult question for all types of
+genome-wide assays such as the ChIP-seq.**
+
+**Here we can filter for only differentially methylated promoters of
+protein coding genes**
+
+```{r, collapse=TRUE}
+DMRs <- DMRs[grep("Promoter", DMRs$ChipSeekerAnn),] %>% filter(gene_biotype == "protein_coding")
+```
+
+```{r, collapse=TRUE}
+nr_of_top <- 20
+
+if (nrow(DMRs) > 20){nr_plots <- nr_of_top}else{nr_plots <- nrow(DMRs)}
+
+for(i in 1:nr_plots){
+plotDMRs(bsseq_obj, regions=DMRs[i,], testCovariate=3, annoTrack=annoTrack, qval = FALSE, stat = FALSE, extend = 500, main = paste0(DMRs[i,]$hgnc_symbol, " - ", DMRs[i,]$ChipSeekerAnn), verbose = FALSE, horizLegend = TRUE, col = c(rep(cellTypes_colors[1:2], each = 4), rep(cellTypes_colors[3:4], each = 3)))
+}
+```
+
+The genes are: `r DMRs[1:nr_of_top,]$hgnc_symbol`
+
+### 4.6.3 Top 10 DMR-associated genes where there is gain in methylation
+
+Here the top 10 DMRs where methylation is higher in hEGCLCs (and lower
+in iMeLCs).
+
+```{r, collapse=TRUE}
+nr_of_top <- 10
+
+if (nrow(DMRs[DMRs$diff.Methy<0, ]) > 10){nr_plots <- nr_of_top}else{nr_plots <- nrow(DMRs[DMRs$diff.Methy<0, ])}
+
+for(i in 1:nr_plots){
+plotDMRs(bsseq_obj, regions=DMRs[DMRs$diff.Methy<0, ][i, ], testCovariate=3, annoTrack=annoTrack, qval = FALSE, stat = FALSE, extend = 5000, main = paste0(DMRs[DMRs$diff.Methy<0, ][i, ]$hgnc_symbol, " - ", DMRs[DMRs$diff.Methy<0, ][i, ]$ChipSeekerAnn), verbose = FALSE, horizLegend = TRUE, col = c(rep(cellTypes_colors[1:2], each = 4), rep(cellTypes_colors[3:4], each = 3)))
+}
+```
+
+The genes are: `r DMRs[DMRs$diff.Methy<0, ][1:10, ]$hgnc_symbol`
+
+### 4.6.4 Top 10 DMR-associated genes where there is loss in methylation
+
+Here the top 10 DMRs where methylation is higher in iMeLCs (and lower in
+hEGCLCs).
+
+```{r, collapse=TRUE}
+nr_of_top <- 10
+
+if (nrow(DMRs[DMRs$diff.Methy>0, ]) > 10){nr_plots <- nr_of_top}else{nr_plots <- nrow(DMRs[DMRs$diff.Methy>0, ])}
+
+for(i in 1:nr_plots){
+plotDMRs(bsseq_obj, regions=DMRs[DMRs$diff.Methy>0, ][i, ], testCovariate=3, annoTrack=annoTrack, qval = FALSE, stat = FALSE, extend = 5000, main = paste0(DMRs[DMRs$diff.Methy>0, ][i, ]$hgnc_symbol, " - ", DMRs[DMRs$diff.Methy>0, ][i, ]$ChipSeekerAnn), verbose = FALSE, horizLegend = TRUE, col = c(rep(cellTypes_colors[1:2], each = 4), rep(cellTypes_colors[3:4], each = 3)))
+}
+```
+
+The genes are: `r DMRs[DMRs$diff.Methy>0, ][1:10, ]$hgnc_symbol`
+
+### 4.6.5 Exploration of PGC markers and other relevant genes
+
+```{r, collapse=TRUE}
+SelectedGenes <- c("PIWIL2", "NANOS3", "IGF1", "DNMT3L", "PIFO", "SOX15", "CSF3R", "NUMB", "CXCR4")
+```
+
+```{r, collapse=TRUE}
+PresentGenes <- vector()
+AbsentGenes <- vector()
+for(gene_index in SelectedGenes){
+  if (any(DMRs$hgnc_symbol %in% gene_index)) {
+    PresentGenes <- c(PresentGenes, gene_index)
+    plotDMRs(bsseq_obj, regions=DMRs[DMRs$hgnc_symbol %in% gene_index,], testCovariate=3, annoTrack=annoTrack, qval = FALSE, stat = FALSE, extend = 5000, main = paste0(gene_index," - ", DMRs[DMRs$hgnc_symbol %in% gene_index,]$ChipSeekerAnn), verbose = FALSE, horizLegend = TRUE, col = c(rep(cellTypes_colors[1:2], each = 4), rep(cellTypes_colors[3:4], each = 3)))
+  } else{ 
+    AbsentGenes <- c(AbsentGenes, gene_index)
+    next}
+}
+```
+
+These genes were found: `r PresentGenes` These genes were not found:
+`r AbsentGenes`
+
+# 5. Date and Session Info
+
+```{r}
+date()
+sessionInfo()
+```
+

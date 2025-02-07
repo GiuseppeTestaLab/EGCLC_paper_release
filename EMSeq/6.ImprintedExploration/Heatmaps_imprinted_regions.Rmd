@@ -1,0 +1,149 @@
+---
+title: "Imprinted Regions - Exploration through heatmaps"
+author: "Gaja Matassa"
+date: 'Date: `r format(Sys.Date(), "%B %d, %Y")`'
+output:
+    html_document:
+        toc: true
+        toc_float: true
+        theme: 'united'
+        highlight: 'kate'
+        code_folding: hide
+---
+
+# 1. Environment setting
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, collapse = TRUE)
+```
+
+```{r, collapse=TRUE}
+library(ggplot2)
+library(scales)
+library(gridExtra)
+library(dplyr)
+library(dmrseq)
+library(annotatr)
+library(sechm)
+```
+
+# 2. Loading data
+
+## 2.1 BSSeq objects
+
+Loading of bsseq object.
+
+```{r, collapse=TRUE}
+bsseq_obj <- readRDS("~/DataDir/1.PreliminaryAnalysis/Output/WithSelectedEGCLCs/bsseq_obj_sharedby75ofall.rds") #getting bsseq object where sample selection and CpG filtering were already performed 
+```
+
+## 2.2 Get imprinted regions 
+
+```{r}
+ImprintedRegions <- readxl::read_xlsx("~/DataDir/5.DMRInterpretation/imprinted_region_all_for_meth.xlsx")
+
+#Removal of regions for which genomic positions were not retrieved
+ImprintedRegions <- ImprintedRegions[!is.na(ImprintedRegions$Start), ]
+
+ImprintedRegions_GRanges <- makeGRangesFromDataFrame(ImprintedRegions, seqnames.field = "Chr", start.field = "Start", end.field = "End", keep.extra.columns = TRUE)
+```
+
+
+# 3. Heatmaps 
+
+These heatmaps show the methylation levels of all the CpGs we covered that fall within the imprinted regions.
+
+```{r}
+m <- findOverlaps(rowRanges(bsseq_obj), ImprintedRegions_GRanges)
+
+bsseq_obj_subset <- bsseq_obj[queryHits(m),]
+
+rowData(bsseq_obj_subset)$Gene <- mcols(ImprintedRegions_GRanges[subjectHits(m), ])$"Gene locus"
+rowData(bsseq_obj_subset)$DMRStatus <- mcols(ImprintedRegions_GRanges[subjectHits(m), ])$DMRStatus
+#rowData(bsseq_obj_subset)$Reference <- mcols(ImprintedRegions_GRanges[subjectHits(m), ])$Reference
+```
+
+```{r}
+assays(bsseq_obj_subset)$Meth <- getMeth(bsseq_obj_subset, type = "raw")
+
+ScaledCols <- c('darkblue', "purple", "white", "lightgoldenrod1", 'goldenrod1')
+
+cellTypes_colors <- c(hiPSCs ="#dd1c77", iMeLCs ="#377eb8", hPGCLCs ="#4daf4a", hEGCLCs = "#ff7f00")
+colData(bsseq_obj_subset)$Type <- factor(colData(bsseq_obj_subset)$Type, levels = c("hiPSCs", "iMeLCs" , "hPGCLCs", "hEGCLCs"))
+
+metadata(bsseq_obj_subset)$anno_colors <- list(Type = cellTypes_colors,
+                                               GenomicRegion = c ("3' UTR" = "#FFADAD", "5' UTR" = "#FFD6A5", "Distal Intergenic" = "#FDFFB6", "Downstream (<=300bp)" = "#FFFFFC", "Exon" = "#9BF6FF", "Intron" = "#A0C4FF", "Promoter (<=1kb)" = "#BDB2FF", "Promoter (1-2kb)" = "#FFC6FF", "Promoter (2-3kb)" = "#CAFFBF"))
+
+sample_colors <- c("hiPSC_rep1" = "#dd1c77", "hiPSC_rep2" = "#dd1c77", "hiPSC_rep3" = "#dd1c77", "hiPSC_rep4" = "#dd1c77",
+                   "iMeLC_rep1" = "#377eb8", "iMeLC_rep2" = "#377eb8", "iMeLC_rep3" = "#377eb8", "iMeLC_rep4" = "#377eb8",
+                   "hPGCLC_rep1" = "#4daf4a", "hPGCLC_rep2" = "#4daf4a", "hPGCLC_rep3" = "#4daf4a",
+                   "hEGCLC_rep1" = "#ff7f00", "hEGCLC_rep2" = "#ff7f00", "hEGCLC_rep3" = "#ff7f00")
+
+rownames(bsseq_obj_subset) <- c(1:nrow(bsseq_obj_subset))
+```
+
+In total we have `r length(bsseq_obj_subset)` CpGs in all the imprinted regions.
+
+## 3.1 Methylation levels (in %) 
+
+This shows all CpGs as rows.
+
+```{r AllCpGsinImprintedRegions, fig.width=12, fig.height=18}
+break_coord <- assays(bsseq_obj_subset)$Meth %>% quantile(seq(0,1, by=0.1), na.rm =TRUE)
+ExpCols <- viridisLite::plasma(length(seq(head(break_coord,1), tail(break_coord,1), by=0.2)))
+
+sechm(bsseq_obj_subset, features = rownames(bsseq_obj_subset), assayName="Meth", hmcols=ExpCols, breaks=seq(head(break_coord,1), tail(break_coord,1), by=0.2), show_colnames=TRUE, do.scale=FALSE, column_title = "Methylation levels of all CpGs in imprinted regions", top_annotation = c("Type"), left_annotation = c("Gene"), gaps_row = "Gene", row_title_rot = 0) 
+```
+
+This shows the __average__ methylation levels.
+
+```{r, fig.width=12, fig.height=15}
+AvgMeth <- aggregate(assays(bsseq_obj_subset)$Meth, list(rowData(bsseq_obj_subset)$Gene), mean, na.rm = T)
+rownames(AvgMeth) <- AvgMeth$Group.1
+AvgMeth <- AvgMeth[, -1]
+
+rowDataSE <- rowData(bsseq_obj_subset)
+rownames(rowDataSE) <- rowData(bsseq_obj_subset)$Gene
+rowDataSE <- rowDataSE[rownames(AvgMeth), ] 
+SE <- SummarizedExperiment(assays=AvgMeth, colData=colData(bsseq_obj_subset), rowData = rowDataSE, )
+
+identical(rownames(assay(SE)), rownames(rowData(SE))) #TRUE
+
+metadata(SE)$anno_colors <- list(Type = cellTypes_colors,
+                                               GenomicRegion = c ("3' UTR" = "#FFADAD", "5' UTR" = "#FFD6A5", "Distal Intergenic" = "#FDFFB6", "Downstream (<=300bp)" = "#FFFFFC", "Exon" = "#9BF6FF", "Intron" = "#A0C4FF", "Promoter (<=1kb)" = "#BDB2FF", "Promoter (1-2kb)" = "#FFC6FF", "Promoter (2-3kb)" = "#CAFFBF"))
+```
+
+```{r AverageMethinImprintedRegions, fig.width=12, fig.height=15}
+sechm(SE, features = rownames(SE), hmcols=ExpCols, breaks=seq(head(break_coord,1), tail(break_coord,1), by=0.2), show_rownames=TRUE, show_colnames=TRUE, do.scale=FALSE, column_title = "Average methylation levels of CpGs in imprinted regions", top_annotation = c("Type"), row_title_rot = 0) 
+```
+
+Clustering by row
+
+```{r AverageMethinImprintedRegions_clus, fig.width=12, fig.height=15}
+sechm(SE, features = rownames(SE), hmcols=ExpCols, breaks=seq(head(break_coord,1), tail(break_coord,1), by=0.2), show_rownames=TRUE, show_colnames=TRUE, do.scale=FALSE, column_title = "Average methylation levels of CpGs in imprinted regions", top_annotation = c("Type"), row_title_rot = 0, cluster_rows = TRUE) 
+```
+
+Sechm removes genes with a NaN value in at least one sample....
+Let's plot also these genes with black box in case of NaNs.
+
+```{r AverageMethinImprintedRegionsWithNaN, fig.width=12, fig.height=15}
+if(any(is.na(assay(SE)))){
+  assay(SE)[is.na(assay(SE))] <- -1
+}
+
+ExpCols <- c("black", ExpCols)
+
+sechm(SE, features = rownames(SE), hmcols=ExpCols, breaks=c(-1, seq(head(break_coord,1), tail(break_coord,1), by=0.2)), show_rownames = TRUE, show_colnames=TRUE, do.scale=FALSE, column_title = "Average methylation levels of CpGs in imprinted regions (with NaN)", top_annotation = c("Type"), row_title_rot = 0) 
+```
+
+# 3. Session Info
+
+```{r SaveSession}
+SessionInfo <- sessionInfo()
+Date <- date()
+```
+
+```{r SessionInfo}
+Date
+SessionInfo
+```

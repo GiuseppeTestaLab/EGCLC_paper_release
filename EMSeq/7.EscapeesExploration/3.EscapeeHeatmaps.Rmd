@@ -1,0 +1,159 @@
+---
+title: "Heatmaps of escapees CpG methylation levels"
+author: "Gaja Matassa"
+date: 'Date: `r format(Sys.Date(), "%B %d, %Y")`'
+output:
+  html_document:
+    toc: yes
+    toc_float: yes
+    theme: united
+    highlight: kate
+    code_folding: hide
+  word_document:
+    toc: yes
+  pdf_document:
+    toc: yes
+params:
+  InputFolder: '~/DataDir/7.EscapeesExploration/Output/EscapeeBsseq/'
+---
+
+# 1. Environment setting
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, collapse = TRUE, warning = FALSE)
+options(scipen = 100, digits = 4)
+```
+
+```{r, collapse=TRUE}
+library(dplyr)
+library(ggplot2)
+library(scales)
+library(gridExtra)
+library(bsseq)
+library(sechm)
+    
+source("../Methylation_helper.R")
+```
+
+```{r, collapse=TRUE}
+InputFolder <- params$InputFolder
+```
+
+# 2. Loading data
+
+Loading bsseq object
+```{r}
+bsseq_obj_escapees <- readRDS(paste0(InputFolder, "bsseq_obj_escapees.rds"))
+```
+
+Loading annotated escapees
+```{r}
+AnnotatedEscapees <- readRDS("~/DataDir/7.EscapeesExploration/Output/EscapeesAnnotationAndFunctional/AnnotatedEscapees.rds")
+```
+
+# 3. Heatmap
+
+I keep escapee CpGs covered by ALL samples
+
+```{r}
+bsseq_obj_escapees_filt <- methylSig::filter_loci_by_group_coverage(bs = bsseq_obj_escapees, group_column = "Line", min_samples_per_group = c("CTL08A" = dim(bsseq_obj_escapees)[2]))
+```
+
+Now we have `r length(bsseq_obj_escapees_filt)` CpGs.
+
+Add annotation made in script 2.EscapeeAnnotationAndFunctional.Rmd
+
+```{r}
+AnnotatedEscapees_gr <- makeGRangesFromDataFrame(AnnotatedEscapees, keep.extra.columns = TRUE)
+```
+
+```{r}
+m <- findOverlaps(rowRanges(bsseq_obj_escapees_filt), AnnotatedEscapees_gr)
+
+bsseq_obj_subset <- bsseq_obj_escapees_filt[queryHits(m),]
+
+rowData(bsseq_obj_subset)$ensembl_gene_id <- AnnotatedEscapees_gr[subjectHits(m), ]$ensembl_gene_id
+```
+
+Let's show the __average__ methylation levels. Instead of plotting for each row an escapee CpGs, I aggregate CpGs by ensembl gene id __averaging__ the methylation levels. 
+
+```{r, fig.width=12, fig.height=15}
+AvgMeth <- aggregate(assays(bsseq_obj_subset)$Meth, list(rowData(bsseq_obj_subset)$ensembl_gene_id), mean, na.rm = T)
+rownames(AvgMeth) <- AvgMeth$Group.1
+AvgMeth <- AvgMeth[, -1]
+
+rowDataSE <- rowData(bsseq_obj_subset)
+rownames(rowDataSE) <- rowData(bsseq_obj_subset)$ensembl_gene_id
+rowDataSE <- rowDataSE[rownames(AvgMeth), ]
+
+SampleAnno <- colData(bsseq_obj_subset)
+
+SE <- SummarizedExperiment(assays=AvgMeth, colData=SampleAnno, rowData = rowDataSE)
+
+identical(colnames(assay(SE)), rownames(colData(SE))) #TRUE
+
+cellTypes_colors <- c(hiPSCs ="#dd1c77", iMeLCs ="#377eb8", hPGCLCs ="#4daf4a", hEGCLCs = "#ff7f00")
+colData(SE)$Type <- factor(colData(SE)$Type, levels = c("hiPSCs", "iMeLCs" , "hPGCLCs", "hEGCLCs"))
+
+metadata(SE)$anno_colors <- list(Type = cellTypes_colors,
+                                               GenomicRegion = c ("3' UTR" = "#FFADAD", "5' UTR" = "#FFD6A5", "Distal Intergenic" = "#FDFFB6", "Downstream (<=300bp)" = "#FFFFFC", "Exon" = "#9BF6FF", "Intron" = "#A0C4FF", "Promoter (<=1kb)" = "#BDB2FF", "Promoter (1-2kb)" = "#FFC6FF", "Promoter (2-3kb)" = "#CAFFBF"))
+```
+
+```{r}
+break_coord <- assay(SE) %>% quantile(seq(0,1, by=0.1), na.rm =TRUE)
+ExpCols <- viridisLite::plasma(length(seq(head(break_coord,1), tail(break_coord,1), by=0.2)))
+sechm(SE, features = rownames(SE), hmcols=ExpCols, breaks=seq(head(break_coord,1), tail(break_coord,1), by=0.2), show_rownames=FALSE, show_colnames=TRUE, do.scale=FALSE, column_title = "Average methylation levels (by gene) of CpGs in escapee regions", top_annotation = c("Type"), row_title_rot = 0, cluster_rows = TRUE)
+```
+
+Let's change the range of methylation
+
+```{r}
+break_coord <- assay(SE) %>% quantile(seq(0,1, by=0.1), na.rm =TRUE)
+ExpCols <- viridisLite::plasma(length(seq(break_coord[2], tail(break_coord,1), by=0.05)))
+sechm(SE, features = rownames(SE), hmcols=ExpCols, breaks=seq(break_coord[2], tail(break_coord,1), by=0.05), show_rownames=FALSE, show_colnames=TRUE, do.scale=FALSE, column_title = "Average methylation levels (by gene) of CpGs in escapee regions", top_annotation = c("Type"), row_title_rot = 0, cluster_rows = TRUE)
+```
+
+Let's now show the __median__ methylation levels. Instead of plotting for each row an escapee CpGs, I aggregate CpGs by ensembl gene id __doing the median__ of the methylation levels. 
+```{r, fig.width=12, fig.height=15}
+MedianMeth <- aggregate(assays(bsseq_obj_subset)$Meth, list(rowData(bsseq_obj_subset)$ensembl_gene_id), median, na.rm = T)
+rownames(MedianMeth) <- MedianMeth$Group.1
+MedianMeth <- MedianMeth[, -1]
+
+rowDataSE <- rowData(bsseq_obj_subset)
+rownames(rowDataSE) <- rowData(bsseq_obj_subset)$ensembl_gene_id
+rowDataSE <- rowDataSE[rownames(MedianMeth), ]
+
+SampleAnno <- colData(bsseq_obj_subset)
+
+SE <- SummarizedExperiment(assays=MedianMeth, colData=SampleAnno, rowData = rowDataSE)
+
+identical(colnames(assay(SE)), rownames(colData(SE))) #TRUE
+
+cellTypes_colors <- c(hiPSCs ="#dd1c77", iMeLCs ="#377eb8", hPGCLCs ="#4daf4a", hEGCLCs = "#ff7f00")
+colData(SE)$Type <- factor(colData(SE)$Type, levels = c("hiPSCs", "iMeLCs" , "hPGCLCs", "hEGCLCs"))
+
+metadata(SE)$anno_colors <- list(Type = cellTypes_colors,
+                                               GenomicRegion = c ("3' UTR" = "#FFADAD", "5' UTR" = "#FFD6A5", "Distal Intergenic" = "#FDFFB6", "Downstream (<=300bp)" = "#FFFFFC", "Exon" = "#9BF6FF", "Intron" = "#A0C4FF", "Promoter (<=1kb)" = "#BDB2FF", "Promoter (1-2kb)" = "#FFC6FF", "Promoter (2-3kb)" = "#CAFFBF"))
+```
+
+```{r}
+break_coord <- assay(SE) %>% quantile(seq(0,1, by=0.1), na.rm =TRUE)
+ExpCols <- viridisLite::plasma(length(seq(head(break_coord,1), tail(break_coord,1), by=0.2)))
+sechm(SE, features = rownames(SE), hmcols=ExpCols, breaks=seq(head(break_coord,1), tail(break_coord,1), by=0.2), show_rownames=FALSE, show_colnames=TRUE, do.scale=FALSE, column_title = "Median methylation levels (by gene) of CpGs in escapee regions", top_annotation = c("Type"), row_title_rot = 0, cluster_rows = TRUE)
+```
+
+Let's change the range of methylation (1st-10th deciles of methylation)
+
+```{r}
+break_coord <- assay(SE) %>% quantile(seq(0,1, by=0.1), na.rm =TRUE)
+ExpCols <- viridisLite::plasma(length(seq(break_coord[2], tail(break_coord,1), by=0.05)))
+sechm(SE, features = rownames(SE), hmcols=ExpCols, breaks=seq(break_coord[2], tail(break_coord,1), by=0.05), show_rownames=FALSE, show_colnames=TRUE, do.scale=FALSE, column_title = "Median methylation levels (by gene) of CpGs in escapee regions", top_annotation = c("Type"), row_title_rot = 0, cluster_rows = TRUE)
+```
+
+# 4. Session Info
+
+```{r}
+date()
+sessionInfo()
+```
+

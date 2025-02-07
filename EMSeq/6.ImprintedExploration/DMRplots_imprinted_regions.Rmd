@@ -1,0 +1,424 @@
+---
+title: "Imprinted Regions - Exploration through DMR plots"
+author: "Gaja Matassa"
+date: 'Date: `r format(Sys.Date(), "%B %d, %Y")`'
+output:
+  html_document:
+    toc: yes
+    toc_float: yes
+    theme: united
+    highlight: kate
+    code_folding: hide
+  word_document:
+    toc: yes
+  pdf_document:
+    toc: yes
+params:
+  DMRAnnotated: "~/DataDir/4.DMRAnnotated/DMRsAnnotated_final.rds"
+---
+
+# 1. Environment setting
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, collapse = TRUE)
+```
+
+```{r, collapse=TRUE}
+library(ggplot2)
+library(scales)
+library(gridExtra)
+library(dplyr)
+library(dmrseq)
+library(annotatr)
+library(sechm)
+```
+
+# 2. Loading data
+
+## 2.1 BSSeq objects
+
+Loading of bsseq object.
+
+```{r, collapse=TRUE}
+bsseq_obj <- readRDS("~/DataDir/1.PreliminaryAnalysis/Output/WithSelectedEGCLCs/bsseq_obj_sharedby75ofall.rds") #getting bsseq object where sample selection and CpG filtering were already performed 
+```
+
+## 2.2 Annotated DMRs
+
+**The DMRs here selected were called with: `delta=0.25` and `p.threshold=0.0001`**
+
+```{r}
+DMRs_annotated <- readRDS(params$DMRAnnotated)
+```
+
+## 2.3 Get imprinted regions collected from different papers
+
+Imprinted regions were taken from the following papers:
+
+* deSousa 2023 = https://www.science.org/doi/10.1126/sciadv.adg1936?url_ver=Z39.88-2003&rfr_id=ori:rid:crossref.org&rfr_dat=cr_pub%20%200pubmed
+* Tang 2015 = https://www.cell.com/fulltext/S0092-8674%2815%2900564-4
+* von Meyenn 2016 = https://www.sciencedirect.com/science/article/pii/S1534580716306372
+* Court 2014 = https://genome.cshlp.org/content/24/4/554
+* Kobayashi 2022 = https://www.sciencedirect.com/science/article/pii/S221367112200056X
+* Jima 2022 = https://doi.org/10.1080/15592294.2022.2091815
+* Babak 2015 = doi:10.1038/ng.3274
+
+Other important references:
+https://www.geneimprint.com/site/genes-by-species
+
+* Human Imprintome Genomic Map = https://www.geneimprint.com/site/features/35786392
+
+```{r}
+ImprintedRegions <- readxl::read_xlsx("~/DataDir/5.DMRInterpretation/imprinted_region_all_for_meth.xlsx")
+ImprintedRegions_GRanges <- makeGRangesFromDataFrame(ImprintedRegions, seqnames.field = "Chr", start.field = "Start", end.field = "End", keep.extra.columns = TRUE, na.rm=TRUE)
+```
+
+# 3. Get `annoTrack` with **`annotatr`** and **`dmrseq`**
+
+```{r, collapse=TRUE}
+# get annotations for hg38
+annoTrack <- dmrseq::getAnnot("hg38")
+```
+
+# 4. Exploration of DMR-associated genes {.tabset}
+
+```{r}
+cellTypes_colors <- c(hiPSCs ="#dd1c77", iMeLCs ="#377eb8", hPGCLCs ="#4daf4a", hEGCLCs = "#ff7f00")
+colData(bsseq_obj)$Type <- factor(colData(bsseq_obj)$Type, levels = c("hiPSCs", "iMeLCs" , "hPGCLCs", "hEGCLCs"))
+```
+
+## 4.1 hPGCLCs vs hiPSCs
+
+### 4.1.1 Get DMRs hPGCLCs vs hiPSCs
+```{r}
+comparison <- "hiPSCsvshPGCLCs"
+DMRs <- DMRs_annotated[[comparison]]
+```
+
+### 4.1.2 Exploration of imprinted genes within hPGCLCs vs hiPSCs DMRs
+
+```{r, collapse=TRUE}
+ImprintedGenes <- ImprintedRegions_GRanges$`Gene locus`
+```
+
+```{r, collapse=TRUE}
+PresentGenes <- vector()
+AbsentGenes <- vector()
+for(gene_index in ImprintedGenes){
+  if (any(DMRs$hgnc_symbol %in% gene_index)) {
+    PresentGenes <- c(PresentGenes, gene_index)
+    plotDMRs(bsseq_obj, regions=DMRs[DMRs$hgnc_symbol %in% gene_index,], testCovariate=3, annoTrack=annoTrack, qval = FALSE, stat = FALSE, extend = 5000, main = paste0(gene_index," - ", DMRs[DMRs$hgnc_symbol %in% gene_index,]$ChipSeekerAnn), verbose = FALSE, horizLegend = TRUE, col = c(rep(cellTypes_colors[1:2], each = 4), rep(cellTypes_colors[3:4], each = 3)))
+  } else{ 
+    AbsentGenes <- c(AbsentGenes, gene_index)
+    next}
+}
+```
+
+These genes were found: `r PresentGenes` These genes were not found:
+`r AbsentGenes`
+
+### 4.1.3 Exploration of irie et al., 2023 relevant genes
+
+```{r, collapse=TRUE}
+SelectedGenes <- c("CDH5", "DMRT1", "PIWIL2", "DAZL")
+```
+
+```{r, collapse=TRUE}
+PresentGenes <- vector()
+AbsentGenes <- vector()
+for(gene_index in SelectedGenes){
+  if (any(DMRs$hgnc_symbol %in% gene_index)) {
+    PresentGenes <- c(PresentGenes, gene_index)
+    plotDMRs(bsseq_obj, regions=DMRs[DMRs$hgnc_symbol %in% gene_index,], testCovariate=3, annoTrack=annoTrack, qval = FALSE, stat = FALSE, extend = 5000, main = paste0(gene_index," - ", DMRs[DMRs$hgnc_symbol %in% gene_index,]$ChipSeekerAnn), verbose = FALSE, horizLegend = TRUE, col = c(rep(cellTypes_colors[1:2], each = 4), rep(cellTypes_colors[3:4], each = 3)))
+  } else{ 
+    AbsentGenes <- c(AbsentGenes, gene_index)
+    next}
+}
+```
+
+These genes were found: `r PresentGenes` These genes were not found:
+`r AbsentGenes`
+
+## 4.2 hPGCLCs vs hEGCLCs
+
+### 4.2.1 Get DMRs hPGCLCs vs hEGCLCs
+
+```{r}
+comparison <- "hEGCLCsvshPGCLCs"
+DMRs <- DMRs_annotated[[comparison]]
+```
+
+### 4.2.2 Exploration of imprinted genes within hPGCLCs vs hEGCLCs DMRs
+
+```{r, collapse=TRUE}
+ImprintedGenes <- ImprintedRegions_GRanges$`Gene locus`
+```
+
+```{r, collapse=TRUE}
+PresentGenes <- vector()
+AbsentGenes <- vector()
+for(gene_index in ImprintedGenes){
+  if (any(DMRs$hgnc_symbol %in% gene_index)) {
+    PresentGenes <- c(PresentGenes, gene_index)
+    plotDMRs(bsseq_obj, regions=DMRs[DMRs$hgnc_symbol %in% gene_index,], testCovariate=3, annoTrack=annoTrack, qval = FALSE, stat = FALSE, extend = 5000, main = paste0(gene_index," - ", DMRs[DMRs$hgnc_symbol %in% gene_index,]$ChipSeekerAnn), verbose = FALSE, horizLegend = TRUE, col = c(rep(cellTypes_colors[1:2], each = 4), rep(cellTypes_colors[3:4], each = 3)))
+  } else{ 
+    AbsentGenes <- c(AbsentGenes, gene_index)
+    next}
+}
+```
+
+These genes were found: `r PresentGenes` These genes were not found:
+`r AbsentGenes`
+
+### 4.2.3 Exploration of irie et al., 2023 relevant genes
+
+```{r, collapse=TRUE}
+SelectedGenes <- c("CDH5", "DMRT1", "PIWIL2", "DAZL")
+```
+
+```{r, collapse=TRUE}
+PresentGenes <- vector()
+AbsentGenes <- vector()
+for(gene_index in SelectedGenes){
+  if (any(DMRs$hgnc_symbol %in% gene_index)) {
+    PresentGenes <- c(PresentGenes, gene_index)
+    plotDMRs(bsseq_obj, regions=DMRs[DMRs$hgnc_symbol %in% gene_index,], testCovariate=3, annoTrack=annoTrack, qval = FALSE, stat = FALSE, extend = 5000, main = paste0(gene_index," - ", DMRs[DMRs$hgnc_symbol %in% gene_index,]$ChipSeekerAnn), verbose = FALSE, horizLegend = TRUE, col = c(rep(cellTypes_colors[1:2], each = 4), rep(cellTypes_colors[3:4], each = 3)))
+  } else{ 
+    AbsentGenes <- c(AbsentGenes, gene_index)
+    next}
+}
+```
+
+These genes were found: `r PresentGenes` These genes were not found:
+`r AbsentGenes`
+
+## 4.3 hiPSCs vs hEGCLCs
+
+
+### 4.3.1 Get DMRs hiPSCs vs hEGCLCs
+
+```{r}
+comparison <- "hEGCLCsvshiPSCs"
+DMRs <- DMRs_annotated[[comparison]]
+```
+
+### 4.3.2 Exploration of Imprinted genes within hiPSCs vs hEGCLCs DMRs
+
+```{r, collapse=TRUE}
+ImprintedGenes <- ImprintedRegions_GRanges$`Gene locus`
+```
+
+```{r, collapse=TRUE}
+PresentGenes <- vector()
+AbsentGenes <- vector()
+for(gene_index in ImprintedGenes){
+  if (any(DMRs$hgnc_symbol %in% gene_index)) {
+    PresentGenes <- c(PresentGenes, gene_index)
+    plotDMRs(bsseq_obj, regions=DMRs[DMRs$hgnc_symbol %in% gene_index,], testCovariate=3, annoTrack=annoTrack, qval = FALSE, stat = FALSE, extend = 5000, main = paste0(gene_index," - ", DMRs[DMRs$hgnc_symbol %in% gene_index,]$ChipSeekerAnn), verbose = FALSE, horizLegend = TRUE, col = c(rep(cellTypes_colors[1:2], each = 4), rep(cellTypes_colors[3:4], each = 3)))
+  } else{ 
+    AbsentGenes <- c(AbsentGenes, gene_index)
+    next}
+}
+```
+
+These genes were found: `r PresentGenes` These genes were not found:
+`r AbsentGenes`
+
+### 4.3.3 Exploration of irie et al., 2023 relevant genes
+
+```{r, collapse=TRUE}
+SelectedGenes <- c("CDH5", "DMRT1", "PIWIL2", "DAZL")
+```
+
+```{r, collapse=TRUE}
+PresentGenes <- vector()
+AbsentGenes <- vector()
+for(gene_index in SelectedGenes){
+  if (any(DMRs$hgnc_symbol %in% gene_index)) {
+    PresentGenes <- c(PresentGenes, gene_index)
+    plotDMRs(bsseq_obj, regions=DMRs[DMRs$hgnc_symbol %in% gene_index,], testCovariate=3, annoTrack=annoTrack, qval = FALSE, stat = FALSE, extend = 5000, main = paste0(gene_index," - ", DMRs[DMRs$hgnc_symbol %in% gene_index,]$ChipSeekerAnn), verbose = FALSE, horizLegend = TRUE, col = c(rep(cellTypes_colors[1:2], each = 4), rep(cellTypes_colors[3:4], each = 3)))
+  } else{ 
+    AbsentGenes <- c(AbsentGenes, gene_index)
+    next}
+}
+```
+
+These genes were found: `r PresentGenes` These genes were not found:
+`r AbsentGenes`
+
+## 4.4  iMeLCs vs hiPSCs 
+
+### 4.4.1 Get DMRs  iMeLCs vs hiPSCs 
+
+```{r}
+comparison <- "hiPSCsvsiMeLCs"
+DMRs <- DMRs_annotated[[comparison]]
+```
+
+### 4.4.2 Exploration of imprinted genes within iMeLCs vs hiPSCs  DMRs 
+
+```{r, collapse=TRUE}
+ImprintedGenes <- ImprintedRegions_GRanges$`Gene locus`
+```
+
+```{r, collapse=TRUE}
+PresentGenes <- vector()
+AbsentGenes <- vector()
+for(gene_index in ImprintedGenes){
+  if (any(DMRs$hgnc_symbol %in% gene_index)) {
+    PresentGenes <- c(PresentGenes, gene_index)
+    plotDMRs(bsseq_obj, regions=DMRs[DMRs$hgnc_symbol %in% gene_index,], testCovariate=3, annoTrack=annoTrack, qval = FALSE, stat = FALSE, extend = 5000, main = paste0(gene_index," - ", DMRs[DMRs$hgnc_symbol %in% gene_index,]$ChipSeekerAnn), verbose = FALSE, horizLegend = TRUE, col = c(rep(cellTypes_colors[1:2], each = 4), rep(cellTypes_colors[3:4], each = 3)))
+  } else{ 
+    AbsentGenes <- c(AbsentGenes, gene_index)
+    next}
+}
+```
+
+These genes were found: `r PresentGenes` These genes were not found:
+`r AbsentGenes`
+
+### 4.4.3 Exploration of irie et al., 2023 relevant genes
+
+```{r, collapse=TRUE}
+SelectedGenes <- c("CDH5", "DMRT1", "PIWIL2", "DAZL")
+```
+
+```{r, collapse=TRUE}
+PresentGenes <- vector()
+AbsentGenes <- vector()
+for(gene_index in SelectedGenes){
+  if (any(DMRs$hgnc_symbol %in% gene_index)) {
+    PresentGenes <- c(PresentGenes, gene_index)
+    plotDMRs(bsseq_obj, regions=DMRs[DMRs$hgnc_symbol %in% gene_index,], testCovariate=3, annoTrack=annoTrack, qval = FALSE, stat = FALSE, extend = 5000, main = paste0(gene_index," - ", DMRs[DMRs$hgnc_symbol %in% gene_index,]$ChipSeekerAnn), verbose = FALSE, horizLegend = TRUE, col = c(rep(cellTypes_colors[1:2], each = 4), rep(cellTypes_colors[3:4], each = 3)))
+  } else{ 
+    AbsentGenes <- c(AbsentGenes, gene_index)
+    next}
+}
+```
+
+These genes were found: `r PresentGenes` These genes were not found:
+`r AbsentGenes`
+
+## 4.5 hPGCLCs vs iMeLCs 
+
+### 4.5.1 Get DMRs hPGCLCs vs iMeLCs 
+
+```{r}
+comparison <- "iMeLCsvshPGCLCs"
+DMRs <- DMRs_annotated[[comparison]]
+```
+
+### 4.5.2 Exploration of Imprinted genes within hPGCLCs vs iMeLCs DMRs
+
+```{r, collapse=TRUE}
+ImprintedGenes <- ImprintedRegions_GRanges$`Gene locus`
+```
+
+```{r, collapse=TRUE}
+PresentGenes <- vector()
+AbsentGenes <- vector()
+for(gene_index in ImprintedGenes){
+  if (any(DMRs$hgnc_symbol %in% gene_index)) {
+    PresentGenes <- c(PresentGenes, gene_index)
+    plotDMRs(bsseq_obj, regions=DMRs[DMRs$hgnc_symbol %in% gene_index,], testCovariate=3, annoTrack=annoTrack, qval = FALSE, stat = FALSE, extend = 5000, main = paste0(gene_index," - ", DMRs[DMRs$hgnc_symbol %in% gene_index,]$ChipSeekerAnn), verbose = FALSE, horizLegend = TRUE, col = c(rep(cellTypes_colors[1:2], each = 4), rep(cellTypes_colors[3:4], each = 3)))
+  } else{ 
+    AbsentGenes <- c(AbsentGenes, gene_index)
+    next}
+}
+```
+
+These genes were found: `r PresentGenes` These genes were not found:
+`r AbsentGenes`
+
+### 4.5.3 Exploration of irie et al., 2023 relevant genes
+
+```{r, collapse=TRUE}
+SelectedGenes <- c("CDH5", "DMRT1", "PIWIL2", "DAZL")
+```
+
+```{r, collapse=TRUE}
+PresentGenes <- vector()
+AbsentGenes <- vector()
+for(gene_index in SelectedGenes){
+  if (any(DMRs$hgnc_symbol %in% gene_index)) {
+    PresentGenes <- c(PresentGenes, gene_index)
+    plotDMRs(bsseq_obj, regions=DMRs[DMRs$hgnc_symbol %in% gene_index,], testCovariate=3, annoTrack=annoTrack, qval = FALSE, stat = FALSE, extend = 5000, main = paste0(gene_index," - ", DMRs[DMRs$hgnc_symbol %in% gene_index,]$ChipSeekerAnn), verbose = FALSE, horizLegend = TRUE, col = c(rep(cellTypes_colors[1:2], each = 4), rep(cellTypes_colors[3:4], each = 3)))
+  } else{ 
+    AbsentGenes <- c(AbsentGenes, gene_index)
+    next}
+}
+```
+
+These genes were found: `r PresentGenes` These genes were not found:
+`r AbsentGenes`
+
+## 4.6 iMeLCs vs hEGCLCs
+
+### 4.6.1 Get DMRs  iMeLCs vs hEGCLCs
+
+```{r}
+comparison <- "hEGCLCsvsiMeLCs"
+DMRs <- DMRs_annotated[[comparison]]
+```
+
+### 4.6.2 Exploration of Imprinted genes wthin iMeLCs vs hEGCLCs DMRs
+
+```{r, collapse=TRUE}
+ImprintedGenes <- ImprintedRegions_GRanges$`Gene locus`
+```
+
+```{r, collapse=TRUE}
+PresentGenes <- vector()
+AbsentGenes <- vector()
+for(gene_index in ImprintedGenes){
+  if (any(DMRs$hgnc_symbol %in% gene_index)) {
+    PresentGenes <- c(PresentGenes, gene_index)
+    plotDMRs(bsseq_obj, regions=DMRs[DMRs$hgnc_symbol %in% gene_index,], testCovariate=3, annoTrack=annoTrack, qval = FALSE, stat = FALSE, extend = 5000, main = paste0(gene_index," - ", DMRs[DMRs$hgnc_symbol %in% gene_index,]$ChipSeekerAnn), verbose = FALSE, horizLegend = TRUE, col = c(rep(cellTypes_colors[1:2], each = 4), rep(cellTypes_colors[3:4], each = 3)))
+  } else{ 
+    AbsentGenes <- c(AbsentGenes, gene_index)
+    next}
+}
+```
+
+These genes were found: `r PresentGenes` These genes were not found:
+`r AbsentGenes`
+
+### 4.6.3 Exploration of irie et al., 2023 relevant genes
+
+```{r, collapse=TRUE}
+SelectedGenes <- c("CDH5", "DMRT1", "PIWIL2", "DAZL")
+```
+
+```{r, collapse=TRUE}
+PresentGenes <- vector()
+AbsentGenes <- vector()
+for(gene_index in SelectedGenes){
+  if (any(DMRs$hgnc_symbol %in% gene_index)) {
+    PresentGenes <- c(PresentGenes, gene_index)
+    plotDMRs(bsseq_obj, regions=DMRs[DMRs$hgnc_symbol %in% gene_index,], testCovariate=3, annoTrack=annoTrack, qval = FALSE, stat = FALSE, extend = 5000, main = paste0(gene_index," - ", DMRs[DMRs$hgnc_symbol %in% gene_index,]$ChipSeekerAnn), verbose = FALSE, horizLegend = TRUE, col = c(rep(cellTypes_colors[1:2], each = 4), rep(cellTypes_colors[3:4], each = 3)))
+  } else{ 
+    AbsentGenes <- c(AbsentGenes, gene_index)
+    next}
+}
+```
+
+These genes were found: `r PresentGenes` These genes were not found:
+`r AbsentGenes`
+
+
+# 5. Imprinted regions in the bsseq object
+
+```{r}
+for (region in 1:length(ImprintedRegions_GRanges)) {
+    tryCatch({
+      plotDMRs(bsseq_obj, regions=ImprintedRegions_GRanges[region,], testCovariate=3, annoTrack=annoTrack, main = paste0("Gene locus: ", ImprintedRegions_GRanges[region,]$`Gene locus`), qval = FALSE, stat = FALSE, extend = 5000, verbose = FALSE, horizLegend = TRUE, col = c(rep(cellTypes_colors[1:2], each = 4), rep(cellTypes_colors[3:4], each = 3)))
+      }, error=function(e){})
+}
+```
+
+# 6. Date and Session Info
+
+```{r}
+date()
+sessionInfo()
+```
