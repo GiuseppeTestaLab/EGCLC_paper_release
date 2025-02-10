@@ -13,67 +13,63 @@ pages:
 
    00_ExplorationQC_DimRed_Clustering.ipynb:
       notebook: "scRNASeq/00_Preprocessing/00_ExplorationQC_DimRed_Clustering.ipynb"
-      description: |
+      description: First exploration, quality check, dimensionality reduction and clustering of the scRNA-Seq data.
 
    01a_CellsAnnotationMarkers.ipynb:
       notebook: "scRNASeq/01_Annotation/01a_CellsAnnotationMarkers.ipynb"
-      description: |
+      description: Exploration of known markers across clusters of the scRNA-Seq data and cell types annotation.
 
    01b_FunctionalEnrichment_Clusters.ipynb:
       notebook: "scRNASeq/01_Annotation/01b_FunctionalEnrichment_Clusters.ipynb"
-      description: |
+      description: Functional enrichment of the markers of the Leiden clusters.
 
    01c_CellCycle.ipynb:
       notebook: "scRNASeq/01_Annotation/01c_CellCycle.ipynb"
-      description: |
+      description: Analysis of cell cycle phases of the cells in the scRNA-Seq data.
 
    02a_PseudoBulk_PCA.ipynb:
       notebook: "scRNASeq/02_Pseudobulk/02a_PseudoBulk_PCA.ipynb"
-      description: |
+      description: Generation of pseudobulk from annotated scRNA-Seq and PCA analysis.
 
    02b_Pseudobulk_edgeR_topGO_hEGCLC_hPGCLC.ipynb:
       notebook: "scRNASeq/02_Pseudobulk/02b_Pseudobulk_edgeR_topGO_hEGCLC_hPGCLC.ipynb"
-      description: |
+      description: Differential expression analysis and functional enrichment of DEGs from pseudobulks of hPGCLC and hEGCLC.
 
    02b_Pseudobulk_edgeR_topGO_hiPSC_hEGCLC.ipynb:
       notebook: "scRNASeq/02_Pseudobulk/02b_Pseudobulk_edgeR_topGO_hiPSC_hEGCLC.ipynb"
-      description: |
+      description: Differential expression analysis and functional enrichment of DEGs from pseudobulks of hiPSC and hEGCLC.
 
    02b_Pseudobulk_edgeR_topGO_hiPSC_hPGCLC.ipynb:
       notebook: "scRNASeq/02_Pseudobulk/02b_Pseudobulk_edgeR_topGO_hiPSC_hPGCLC.ipynb"
-      description: |
+      description: Differential expression analysis and functional enrichment of DEGs from pseudobulks of hPGCLC and hiPSC.
 
    02c_Comparisons_between_DEGs.ipynb:
       notebook: "scRNASeq/02_Pseudobulk/02c_Comparisons_between_DEGs.ipynb"
-      description: |
-
-   02c_Comparisons_between_DEGs.ipynb:
-      notebook: "scRNASeq/02_Pseudobulk/02c_Comparisons_between_DEGs.ipynb"
-      description: |
+      description: Comparison of DEGs of comparisons hPGCLC-hEGCLC, hiPSC-hEGCLC and hPGCLC-hiPSC.
 
    03a_Chen_Processing_and_Annotation.ipynb:
       notebook: "scRNASeq/03_Ingestion/03a_Chen_Processing_and_Annotation.ipynb"
-      description: |
+      description: Processing of dataset from [Chen et al. (Cell Reports, 2019)](https://doi.org/10.1016/j.celrep.2019.11.083) and annotation of the cell types.
 
    03b_Ingest_Chen.ipynb:
       notebook: "scRNASeq/03_Ingestion/03b_Ingest_Chen.ipynb"
-      description: |
+      description: Ingestion of in-house dataset onto Chen dataset.
 
    03c_Fetal_Processing_and_Annotation.ipynb:
       notebook: "scRNASeq/03_Ingestion/03c_Fetal_Processing_and_Annotation.ipynb"
-      description: |
+      description: Processing of dataset from [Chen et al. (Cell Reports, 2019)](https://doi.org/10.1016/j.celrep.2019.11.083) and annotation of the cell types.
 
    03d_Ingest_FetalData.ipynb:
       notebook: "scRNASeq/03_Ingestion/03d_Ingest_FetalData.ipynb"
-      description: |
+      description: Processing of dataset from [Guo et al. (Cell Reports, 2019)](https://doi.org/10.1016/j.celrep.2019.11.083) and annotation of the cell types.
 
    04a_DEGs_patterns_AggClustering.ipynb:
       notebook: "scRNASeq/04_edgeR_DEGs_inTime/04a_DEGs_patterns_AggClustering.ipynb"
-      description: |
+      description: Clustering of genes based on the logFC patterns along the hiPSC-iMeLC-hPGCLC-hEGCLC axis.
 
    05_TF_activity_inference.ipynb:
       notebook: "scRNASeq/05_TF_analysis/05_TF_activity_inference.ipynb"
-      description: |
+      description: Inference of TF activity from scRNA-Seq data using Multivariate Linear Model.
 
    FuncEnrich_LeidenCluster_0:
       notebook: "scRNASeq/01_Annotation/markers_in_cluster_tables/GO_cluster_0.html"
@@ -126,55 +122,6 @@ pages:
    FuncEnrich_LeidenCluster_12:
       notebook: "scRNASeq/01_Annotation/markers_in_cluster_tables/GO_cluster_12.html"
       description: Functional enrichment of Leiden cluster 12 from clustering in notebook 01
-
-
-   FuncEnrich_LeidenCluster_1:
-      notebook: "scRNASeq/01_Annotation/markers_in_cluster_tables/GO_cluster_1.html"
-      description: Functional enrichment of Leiden cluster 1 from clustering in notebook 00
-
-   FuncEnrich_LeidenCluster_2:
-      notebook: "scRNASeq/01_Annotation/markers_in_cluster_tables/GO_cluster_2.html"
-      description: Functional enrichment of Leiden cluster 2 from clustering in notebook 00
-
-   FuncEnrich_LeidenCluster_3:
-      notebook: "scRNASeq/01_Annotation/markers_in_cluster_tables/GO_cluster_3.html"
-      description: Functional enrichment of Leiden cluster 3 from clustering in notebook 00
-
-   FuncEnrich_LeidenCluster_4:
-      notebook: "scRNASeq/01_Annotation/markers_in_cluster_tables/GO_cluster_4.html"
-      description: Functional enrichment of Leiden cluster 4 from clustering in notebook 00
-
-   FuncEnrich_LeidenCluster_5:
-      notebook: "scRNASeq/01_Annotation/markers_in_cluster_tables/GO_cluster_5.html"
-      description: Functional enrichment of Leiden cluster 5 from clustering in notebook 00
-
-   FuncEnrich_LeidenCluster_6:
-      notebook: "scRNASeq/01_Annotation/markers_in_cluster_tables/GO_cluster_6.html"
-      description: Functional enrichment of Leiden cluster 6 from clustering in notebook 00
-
-   FuncEnrich_LeidenCluster_7:
-      notebook: "scRNASeq/01_Annotation/markers_in_cluster_tables/GO_cluster_7.html"
-      description: Functional enrichment of Leiden cluster 7 from clustering in notebook 00
-
-   FuncEnrich_LeidenCluster_8:
-      notebook: "scRNASeq/01_Annotation/markers_in_cluster_tables/GO_cluster_8.html"
-      description: Functional enrichment of Leiden cluster 8 from clustering in notebook 00
-
-   FuncEnrich_LeidenCluster_9:
-      notebook: "scRNASeq/01_Annotation/markers_in_cluster_tables/GO_cluster_9.html"
-      description: Functional enrichment of Leiden cluster 9 from clustering in notebook 00
-
-   FuncEnrich_LeidenCluster_10:
-      notebook: "scRNASeq/01_Annotation/markers_in_cluster_tables/GO_cluster_10.html"
-      description: Functional enrichment of Leiden cluster 10 from clustering in notebook 00
-
-   FuncEnrich_LeidenCluster_11:
-      notebook: "scRNASeq/01_Annotation/markers_in_cluster_tables/GO_cluster_11.html"
-      description: Functional enrichment of Leiden cluster 11 from clustering in notebook 00
-
-   FuncEnrich_LeidenCluster_12:
-      notebook: "scRNASeq/01_Annotation/markers_in_cluster_tables/GO_cluster_12.html"
-      description: Functional enrichment of Leiden cluster 12 from clustering in notebook 00
 
    FuncEnrich_GenesCluster_0:
       notebook: "scRNASeq/04_edgeR_DEGs_inTime/html/GO_cluster_0.html"
@@ -235,6 +182,38 @@ pages:
    FuncEnrich_GenesCluster_14:
       notebook: "scRNASeq/04_edgeR_DEGs_inTime/html/GO_cluster_14.html"
       description: Functional enrichment of genes in cluster 14 from clustering in notebook 04a
+
+   06.1_CellOracle.ipynb:
+      notebook: "scRNASeq/06_GRNs/1_CellOracle.ipynb"
+      description: |
+
+   06.2_CellOracle.ipynb:
+      notebook: "scRNASeq/06_GRNs/2_CellOracle.ipynb"
+      description: |
+
+   06.3_CellOracle.ipynb:
+      notebook: "scRNASeq/06_GRNs/3_CellOracle.ipynb"
+      description: |
+
+   06_GRN_DMDE.ipynb:
+      notebook: "scRNASeq/06_GRNs/GRN_DMDE.ipynb"
+      description: |
+
+   06_GRN_hEGCLC.ipynb:
+      notebook: "scRNASeq/06_GRNs/GRN_hEGCLC.ipynb"
+      description: |
+
+   06_GRN_hPGCLC.ipynb:
+      notebook: "scRNASeq/06_GRNs/GRN_hPGCLC.ipynb"
+      description: |
+
+   06_GRN_hiPSC.ipynb:
+      notebook: "scRNASeq/06_GRNs/GRN_hiPSC.ipynb"
+      description: |
+
+   06_GRN_iMeLC.ipynb:
+      notebook: "scRNASeq/06_GRNs/GRN_iMeLC.ipynb"
+      description: |
 
    PreliminaryExploration:
       notebook: "EMSeq/1.ExploratoryAnalysis/PreliminaryExploration.html"
