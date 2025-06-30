@@ -3,7 +3,7 @@
 **Sarah Stucchi, Lessly P. Sepulveda-Rincon, Camille Dion, Gaja Matassa, Alessia Valenti, Cristina Cheroni, Alessandro Vitriolo, Filippo Prazzoli, George Young, Marco Tullio Rigoli, Martina Ciprietti, Benedetta Muda, Zoe Heckhausen, Petra Hajkova, Nicolò Caporale, Giuseppe Testa, Harry G. Leitch**
 
 <p align="center">
-    <img src="https://www.biorxiv.org/content/biorxiv/early/2025/01/14/2025.01.14.632914/F1.large.jpg" width="550">
+  <img src="Schema.jpg" width="550">
 </p>
 
 
