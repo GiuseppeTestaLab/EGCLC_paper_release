@@ -1,0 +1,159 @@
+---
+title: "Generation of bsseq object with escapee CpGs provided by MitinoriLab (Murase et al. paper)"
+author: "Gaja Matassa"
+date: 'Date: `r format(Sys.Date(), "%B %d, %Y")`'
+output:
+  html_document:
+    toc: yes
+    toc_float: yes
+    theme: united
+    highlight: kate
+    code_folding: hide
+  word_document:
+    toc: yes
+  pdf_document:
+    toc: yes
+params:
+  InputFolder: '~/DataDir/7.EscapeesExploration/Escapees_Murase/'
+  OutputFolder: '~/DataDir/7.EscapeesExploration/Escapees_Murase/Output/'
+---
+
+# 1. Environment setting
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, collapse = TRUE, warning = FALSE)
+options(scipen = 100, digits = 4)
+```
+
+```{r, collapse=TRUE}
+library(ggplot2)
+library(bsseq)
+library(scales)
+library(gridExtra)
+library(dplyr)
+library(dmrseq)
+library(annotatr)
+library(sechm)
+library(rtracklayer)
+source("../Methylation_helper.R")
+```
+
+```{r, collapse=TRUE}
+OutputFolder <- params$OutputFolder
+```
+
+# 2. Loading data
+
+## 2.1 BSSeq object
+
+Loading of bsseq object with CpGs shared by 75% of the samples.
+
+```{r, collapse=TRUE}
+bsseq_obj <- readRDS("~/DataDir/1.PreliminaryAnalysis/Output/WithSelectedEGCLCs/bsseq_obj_sharedby75ofall.rds") #getting bsseq object where sample selection and CpG filtering were already performed 
+```
+
+## 2.3 Escapees regions
+
+These escapees regions were provided by Mitinori lab and are both from the [Tang et al. 2015](https://doi.org/10.1016/j.cell.2015.04.053) and [Murase et al.](https://doi.org/10.1038/s41586-024-07526-6) papers.
+
+```{r}
+library(data.table)
+
+EscapeesRegions_F <- fread(
+  "~/DataDir/7.EscapeesExploration/Escapees_Murase/hypermrF5_F1cF1csF2cF2aghGCF_hypermr_merge_sum_homer_label.bed",
+  sep = "\t",
+  header = FALSE,
+  fill = TRUE  # fills in missing columns with NA
+)
+
+EscapeesRegions_M <- fread(
+  "~/DataDir/7.EscapeesExploration/Escapees_Murase/hypermrM4_M1_M1s_M2_hGC_hypermr_merge_sum_homer_label.bed",
+  sep = "\t",
+  header = FALSE,
+  fill = TRUE  # fills in missing columns with NA
+)
+```
+
+```{r}
+head(EscapeesRegions_M)
+EscapeesRegions_M <- EscapeesRegions_M[, c(1,2,3,15,16,18,19,20)]
+colnames(EscapeesRegions_M) <- c("Chr","Start","End","GenomicType","HomerAnno","Gene","Repetitive","Repetitive2")
+```
+
+Let's now focus on escapees found in the male line.
+We have `r nrow(EscapeesRegions_M)` escapees regions.
+
+**These regions are in GRCh38.p12 assembly and with 0-based coordinates**
+
+```{r}
+EscapeesRegions_GRanges <- makeGRangesFromDataFrame(EscapeesRegions_M, seqnames.field = "Chr", start.field = "Start", end.field = "End", keep.extra.columns = FALSE, na.rm=TRUE, starts.in.df.are.0based=TRUE)
+```
+
+# 3. Generation of BSSeq oject with escapee CpGs and non-escapee CpGs
+
+```{r}
+bsseq_ranges_df <- granges(bsseq_obj) %>% as.data.frame() #granges has 0-based position they seem 1-based. Look here for explanation: https://www.biostars.org/p/84686/
+bsseq_ranges_df$end <- bsseq_ranges_df$start + 1 #to make them 0-based
+bsseq_granges <- makeGRangesFromDataFrame(bsseq_ranges_df, starts.in.df.are.0based = TRUE)
+
+bsseq_obj_1based <- bsseq_obj
+bsseq_obj_1based@rowRanges <- bsseq_granges
+granges(bsseq_obj_1based)
+```
+
+This to obtain a bsseq object with only CpGs contained in the escapees regions
+
+```{r}
+m <- findOverlaps(granges(bsseq_obj_1based), EscapeesRegions_GRanges)
+
+bsseq_obj_escapees <- bsseq_obj_1based[queryHits(m),]
+```
+
+With our targeted kit we are able to cover **`r length(bsseq_obj_escapees)`** CpGs belonging to the escapees regions.
+
+Let's create also a bsseq object with non-escapee CpGs (all the other CpGs that are not in escapees regions)
+
+```{r}
+bsseq_obj_NonEscapees <- bsseq_obj_1based[-queryHits(m),]
+```
+
+# 4. Violin plot showing methylation levels of escapee CpGs
+
+```{r}
+assays(bsseq_obj_escapees)$Meth <- getMeth(bsseq_obj_escapees, type = "raw")
+assays(bsseq_obj_NonEscapees)$Meth <- getMeth(bsseq_obj_NonEscapees, type = "raw")
+
+sample_colors <- c("hiPSC_rep1" = "#dd1c77", "hiPSC_rep2" = "#dd1c77", "hiPSC_rep3" = "#dd1c77", "hiPSC_rep4" = "#dd1c77",
+                   "iMeLC_rep1" = "#377eb8", "iMeLC_rep2" = "#377eb8", "iMeLC_rep3" = "#377eb8", "iMeLC_rep4" = "#377eb8",
+                   "hPGCLC_rep1" = "#4daf4a", "hPGCLC_rep2" = "#4daf4a", "hPGCLC_rep3" = "#4daf4a",
+                   "hEGCLC_rep1" = "#ff7f00", "hEGCLC_rep2" = "#ff7f00", "hEGCLC_rep3" = "#ff7f00")
+
+violin_plot(assays(bsseq_obj_escapees)$Meth, stat="median") + ggplot2::scale_fill_manual(values = sample_colors)
+```
+
+# 5. Saving and Session Info
+
+Saving:
+
+-   DataFrame of Escapee regions
+
+-   bsseq object subset with only CpGs in escapees regions
+
+-   bsseq object subset with non-escapee CpGs (all the other CpGs that are not in escapees regions)
+
+```{r}
+openxlsx::write.xlsx(data.frame(
+  seqnames = as.character(seqnames(EscapeesRegions_GRanges)),
+  start = start(EscapeesRegions_GRanges),
+  end = end(EscapeesRegions_GRanges),
+  strand = as.character(strand(EscapeesRegions_GRanges)),
+  mcols(EscapeesRegions_GRanges)
+), file = paste0(OutputFolder, "EscapeeRegions_Murase_hg38.xlsx")) 
+saveRDS(bsseq_obj_escapees, paste0(OutputFolder, "bsseq_obj_escapees_Murase.rds"))
+saveRDS(bsseq_obj_NonEscapees, paste0(OutputFolder, "bsseq_obj_NonEscapees_Murase.rds"))
+```
+
+```{r}
+date()
+sessionInfo()
+```

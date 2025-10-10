@@ -1,0 +1,716 @@
+---
+title: "DMR Annotation"
+author: "Sarah Stucchi"
+date: 'Date: `r format(Sys.Date(), "%B %d, %Y")`'
+output:
+    html_document:
+        toc: true
+        toc_float: true
+        theme: 'united'
+        highlight: 'kate'
+        code_folding: hide
+params: 
+    InputFolder: '/group/testa/Project/PGCLC/Rebuttal_paperEG2025/DM/'
+    OutputFolder: '/group/testa/Project/PGCLC/Rebuttal_paperEG2025/4_DMRAnnotated/Rev'
+    TwistAnnotated: '/group/testa/Project/PGCLC/NewData_fromLaSitua/3.TwistBedAnn/TwistAnnotated.rds'
+---
+
+# 1. Environment setting
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, collapse = TRUE)
+#knitr::opts_chunk$set(echo = TRUE, warning=FALSE, dev = 'cairo_pdf')
+
+```
+
+```{r, collapse=TRUE}
+library(DSS)
+library(plotly)
+library(ggplot2)
+library(scales)
+library(gridExtra)
+library(ChIPseeker)
+library(org.Hs.eg.db)
+library(ReactomePA)
+library(clusterProfiler)
+library(dmrseq)
+library(annotatr)
+library(DT)
+library(data.table)
+
+GTFFile <- "/group/testa/Project/PGCLC/NewData_fromLaSitua/3.TwistBedAnn/Input/gencode.v35.annotation.gtf.gz"
+txdb_v35 <- GenomicFeatures::makeTxDbFromGFF(GTFFile, format="gtf")
+```
+
+```{r, collapse=TRUE}
+InputFolder <- params$InputFolder
+OutputFolder <- params$OutputFolder
+```
+
+# 2. Loading data
+
+## 2.1 BSSeq objects
+
+Loading of bsseq object, with CpGs shared by 75% of samples (after sample selection).
+
+```{r, collapse=TRUE}
+bsseq_obj <- readRDS("/group/testa/Project/PGCLC/emseq_rebuttal/2.PreliminaryAnalysis/bsseq_obj_sharedby75ofall.rds") #getting bsseq object where sample selection and CpG filtering were already performed   
+```
+
+## 2.2 DMRs and DMLs
+
+**The DMRs here selected are called like this: `delta=0.25` and `p.threshold=0.0001`** 
+
+```{r}
+DMRs <- readRDS(paste0(InputFolder, '/', 'DMRs.rds'))
+#DMLs <- readRDS(paste0(InputFolder, '/', 'DMLs.rds'))
+```
+
+## 2.3 Universe of genes
+
+Importing Twist regions that were annotated
+```{r}
+TwistAnnotated <- readRDS(params$TwistAnnotated)
+TwistAnnotated %>% head()
+```
+
+```{r}
+Genes_df <- TwistAnnotated[, c("ensembl_gene_id_version", "ensembl_gene_id", "hgnc_symbol", "gene_biotype")] %>% dplyr::distinct()%>%filter(!is.na(hgnc_symbol))%>%filter(!hgnc_symbol%in%"")
+rownames(Genes_df) <- NULL
+```
+
+These are the genes with the same symbol but different ensembl id
+
+```{r}
+Genes_df[Genes_df$hgnc_symbol%in%Genes_df[duplicated(Genes_df$hgnc_symbol), "hgnc_symbol"],]
+```
+
+```{r}
+Genes_df$entrez_gene_id <- as.vector(mapIds(org.Hs.eg.db, Genes_df$hgnc_symbol, "ENTREZID","SYMBOL"))
+```
+
+```{r}
+nrow(Genes_df[is.na(Genes_df$entrez_gene_id),]) #number of genes without an entrez id
+```
+
+```{r}
+GeneUniverse_symbol <- unique(Genes_df$hgnc_symbol)
+GeneUniverse_entrezid <- na.omit(unique(Genes_df$entrez_gene_id))
+```
+
+# 3. Transform DataFrame with DMRs info to GRanges object 
+
+Remember that position form bedGraph files are 0-based while R works with 1-based position and therefore also the packages we will go to use, this is the reason why I set `starts.in.df.are.0based = TRUE` in creating the GRanges objects, it converts 0-based to 1-based coordinates.
+
+```{r}
+DMRs_GRanges <- DMRs
+#DMLs_GRanges <- DMLs
+
+for(i in 1:length(DMRs)){
+  DMRs_GRanges[[i]] <- makeGRangesFromDataFrame(DMRs_GRanges[[i]], keep.extra.columns = TRUE, 
+                                                start.field = "start", end.field = "end", starts.in.df.are.0based = TRUE)
+#DMLs_GRanges[[i]] <- makeGRangesFromDataFrame(DMLs_GRanges[[i]], keep.extra.columns = TRUE, 
+  #start.field = "start", end.field = "end", starts.in.df.are.0based = TRUE)
+  } 
+```
+
+
+* For hiPSCs vs hEGCLC_p10 we have `r nrow(DMRs$hEGCLCs_p10vshiPSCs)` DMRs.
+* For iMeLCs vs hEGCLCs_p10 we have `r nrow(DMRs$hEGCLCs_p10vsiMeLCs)` DMRs.
+* For hPGCLCs vs hEGCLC_p10 we have `r nrow(DMRs$hEGCLCs_p10vshPGCLCs)` DMRs.
+* For hEGCLCs_p5 vs hEGCLCs_p10 we have `r nrow(DMRs$hEGCLCs_p10vshEGCLCs_p5)` DMRs.
+
+# 4. DMRs annotation {.tabset}
+
+
+
+## 4.1 hiPSCs vs hEGCLCs_p10
+
+### 4.1.1 Genetic annotation and visualization with __`ChIPseeker`__
+
+DMRs are now annotated to their associated genes and genomic regions using the `annotatePeaks` function of the `ChIPseeker `R package, using a TxDb object. The [`GenomicFeatures`](https://bioconductor.org/packages/devel/bioc/vignettes/GenomicFeatures/inst/doc/GenomicFeatures.html) package uses `TxDb` objects to store transcript metadata. This class maps the 5’ and 3’ untranslated regions (UTRs), protein coding sequences (CDSs) and exons for a set of mRNA transcripts to their associated genome. 
+All `TxDb` objects are backed by a SQLite database that manages genomic locations and the relationships between pre-processed mRNA transcripts, exons, protein coding sequences, and their related gene identifiers.
+
+**TxDb created by us**
+
+```{r, collapse=TRUE}
+peakAnnoList <- lapply(list("Higher methylation in hiPSCs" = DMRs_GRanges$hEGCLCs_p10vshiPSCs[DMRs_GRanges$hEGCLCs_p10vshiPSCs$diff.Methy<0,], "Higher methylation in hEGCLCs_p10" = DMRs_GRanges$hEGCLCs_p10vshiPSCs[DMRs_GRanges$hEGCLCs_p10vshiPSCs$diff.Methy>0,]), annotatePeak, TxDb=txdb_v35, tssRegion=c(-3000, 3000), verbose=FALSE)
+```
+
+```{r, collapse=TRUE}
+ChIPseeker::plotAnnoBar(peakAnnoList)
+```
+
+```{r, collapse=TRUE}
+ChIPseeker::plotDistToTSS(peakAnnoList)
+```
+
+Given a list of gene set, `compareCluster` function will compute profiles of each gene cluster. 
+
+```{r, collapse=TRUE}
+genes = lapply(peakAnnoList, function(i) unique(as.data.frame(i)$geneId))
+names(genes) = sub("_", "\n", names(genes))
+```
+
+```{r}
+any(duplicated(genes$`Higher methylation in hiPSCs`))
+```
+
+```{r}
+any(duplicated(genes$`Higher methylation in hEGCLCs_p10`))
+```
+
+There are no duplicated ensembl ids
+
+```{r}
+table(genes$`Higher methylation in hEGCLCs_p10` %in% Genes_df$ensembl_gene_id_version)
+```
+
+```{r}
+genes$`Higher methylation in hEGCLCs_p10` [!genes$`Higher methylation in hEGCLCs_p10` %in% Genes_df$ensembl_gene_id_version]
+```
+
+```{r}
+table(genes$`Higher methylation in hiPSCs`%in% Genes_df$ensembl_gene_id_version)
+```
+
+```{r}
+DMG_uphiPSCsvshEGCLCs_p10 <- Genes_df[Genes_df$ensembl_gene_id_version %in% genes$`Higher methylation in hiPSCs`, "entrez_gene_id"]
+DMG_uphiPSCsvshEGCLCs_p10 <- na.omit(DMG_uphiPSCsvshEGCLCs_p10[!DMG_uphiPSCsvshEGCLCs_p10 %in% ""])
+DMG_downhiPSCsvshEGCLCs_p10 <- Genes_df[Genes_df$ensembl_gene_id_version %in% genes$`Higher methylation in hEGCLCs_p10`, "entrez_gene_id"]
+DMG_downhiPSCsvshEGCLCs_p10 <- na.omit(DMG_downhiPSCsvshEGCLCs_p10[!DMG_downhiPSCsvshEGCLCs_p10 %in% ""])
+```
+
+```{r}
+any(duplicated(DMG_uphiPSCsvshEGCLCs_p10))
+```
+
+```{r}
+any(duplicated(DMG_downhiPSCsvshEGCLCs_p10))
+```
+
+```{r}
+genes$`Higher methylation in hiPSCs` <- DMG_uphiPSCsvshEGCLCs_p10
+genes$`Higher methylation in hEGCLCs_p10` <- DMG_downhiPSCsvshEGCLCs_p10
+```
+
+```{r, collapse=TRUE}
+compKEGG <- compareCluster(geneCluster   = genes,
+                         fun           = "enrichKEGG",
+                         organism="hsa",
+                         pvalueCutoff  = 0.05,
+                         pAdjustMethod = "BH", 
+                         universe = GeneUniverse_entrezid)
+```
+
+There are no significant terms (They have Padj>0.05)
+```{r, fig.height=10, fig.width=15}
+#dotplot(compKEGG, showCategory = 15, title = "KEGG Pathway Enrichment Analysis")
+```
+
+```{r, collapse=TRUE}
+compGO <- compareCluster(geneCluster   = genes,
+                         fun           = "enrichGO",
+                         keyType = "ENTREZID",
+                         pvalueCutoff  = 0.05,
+                         pAdjustMethod = "BH", 
+                         OrgDb='org.Hs.eg.db', 
+                         universe=GeneUniverse_entrezid,
+                         ont = "ALL")
+```
+
+```{r, fig.height=10, fig.width=15}
+#dotplot(compGO, showCategory = 15, title = "GO Enrichment Analysis")
+```
+
+A new `DMRs_annotated` object is created in which annotation from `ChIPseeker` is added.
+
+```{r, collapse=TRUE}
+DMRs_annotated <- DMRs_GRanges
+
+mcols(DMRs_annotated$hEGCLCs_p10vshiPSCs)$ChipSeekerAnn <- NA
+mcols(DMRs_annotated$hEGCLCs_p10vshiPSCs)$ChipSeekerDistanceToTss <- NA
+mcols(DMRs_annotated$hEGCLCs_p10vshiPSCs)$ChipSeekerGeneId <- NA
+
+m <- findOverlaps(DMRs_annotated$hEGCLCs_p10vshiPSCs, peakAnnoList[["Higher methylation in hiPSCs"]]@anno)
+mcols(DMRs_annotated$hEGCLCs_p10vshiPSCs)[queryHits(m), "ChipSeekerAnn"] <- mcols(peakAnnoList[["Higher methylation in hiPSCs"]]@anno)[subjectHits(m), "annotation"]
+mcols(DMRs_annotated$hEGCLCs_p10vshiPSCs)[queryHits(m), "ChipSeekerDistanceToTss"] <- mcols(peakAnnoList[["Higher methylation in hiPSCs"]]@anno)[subjectHits(m), "distanceToTSS"]
+mcols(DMRs_annotated$hEGCLCs_p10vshiPSCs)[queryHits(m), "ChipSeekerGeneId"] <- mcols(peakAnnoList[["Higher methylation in hiPSCs"]]@anno)[subjectHits(m), "geneId"]
+
+m <- findOverlaps(DMRs_annotated$hEGCLCs_p10vshiPSCs, peakAnnoList[["Higher methylation in hEGCLCs_p10"]]@anno)
+mcols(DMRs_annotated$hEGCLCs_p10vshiPSCs)[queryHits(m), "ChipSeekerAnn"] <- mcols(peakAnnoList[["Higher methylation in hEGCLCs_p10"]]@anno)[subjectHits(m), "annotation"]
+mcols(DMRs_annotated$hEGCLCs_p10vshiPSCs)[queryHits(m), "ChipSeekerDistanceToTss"] <- mcols(peakAnnoList[["Higher methylation in hEGCLCs_p10"]]@anno)[subjectHits(m), "distanceToTSS"]
+mcols(DMRs_annotated$hEGCLCs_p10vshiPSCs)[queryHits(m), "ChipSeekerGeneId"] <- mcols(peakAnnoList[["Higher methylation in hEGCLCs_p10"]]@anno)[subjectHits(m), "geneId"]
+```
+
+Adding entrez gene id, gene symbol and gene information
+
+```{r}
+DMRs_annotated$hEGCLCs_p10vshiPSCs <- as.data.frame(DMRs_annotated$hEGCLCs_p10vshiPSCs)
+DMRs_annotated$hEGCLCs_p10vshiPSCs <- dplyr::left_join(DMRs_annotated$hEGCLCs_p10vshiPSCs, Genes_df, by=c('ChipSeekerGeneId' = 'ensembl_gene_id_version'))
+```
+
+```{r}
+DMRs_annotated$hEGCLCs_p10vshiPSCs[!is.na(DMRs_annotated$hEGCLCs_p10vshiPSCs$hgnc_symbol),] %>% select(-c("ChipSeekerDistanceToTss", "ChipSeekerGeneId", "ensembl_gene_id", "entrez_gene_id")) %>% distinct() %>%
+    datatable(class = 'hover', rownames = FALSE, caption="DMRs - hEGCLCs_p10vshiPSCs", extension='Buttons', escape = FALSE,
+              options = list(pageLength=20, dom='Bfrtip', autoWidth=TRUE,
+                             buttons=list(c('csv', 'excel'))))
+```
+
+
+```{r}
+saveRDS(DMRs_annotated, paste0(OutputFolder, '/', 'DMRsAnnotated1.rds'))
+```
+
+
+
+## 4.2  iMeLCs VS hEGCLC_p10
+
+### 4.2.1 Genetic annotation and visualization with __`ChIPseeker`__
+
+DMRs are now annotated to their associated genes and genomic regions using the `annotatePeaks` function of the `ChIPseeker `R package, using a TxDb object. The [`GenomicFeatures`](https://bioconductor.org/packages/devel/bioc/vignettes/GenomicFeatures/inst/doc/GenomicFeatures.html) package uses `TxDb` objects to store transcript metadata. This class maps the 5’ and 3’ untranslated regions (UTRs), protein coding sequences (CDSs) and exons for a set of mRNA transcripts to their associated genome. 
+All `TxDb` objects are backed by a SQLite database that manages genomic locations and the relationships between pre-processed mRNA transcripts, exons, protein coding sequences, and their related gene identifiers.
+
+**TxDb created by us**
+
+```{r, collapse=TRUE}
+peakAnnoList <- lapply(list("Higher methylation in iMeLCs" = DMRs_GRanges$hEGCLCs_p10vsiMeLCs[DMRs_GRanges$hEGCLCs_p10vsiMeLCs$diff.Methy<0,], "Higher methylation in hEGCLCs_p10" = DMRs_GRanges$hEGCLCs_p10vsiMeLCs[DMRs_GRanges$hEGCLCs_p10vsiMeLCs$diff.Methy>0,]), annotatePeak, TxDb=txdb_v35, tssRegion=c(-3000, 3000), verbose=FALSE)
+
+```
+
+```{r, collapse=TRUE}
+ChIPseeker::plotAnnoBar(peakAnnoList)
+```
+
+```{r, collapse=TRUE}
+ChIPseeker::plotDistToTSS(peakAnnoList)
+```
+
+Given a list of gene set, `compareCluster` function will compute profiles of each gene cluster. 
+
+```{r, collapse=TRUE}
+genes = lapply(peakAnnoList, function(i) unique(as.data.frame(i)$geneId))
+names(genes) = sub("_", "\n", names(genes))
+```
+
+```{r}
+any(duplicated(genes$`Higher methylation in hEGCLC_p10`))
+```
+
+```{r}
+any(duplicated(genes$`Higher methylation in iMeLCs`))
+```
+
+There are no duplicated ensembl ids
+
+```{r}
+table(genes$`Higher methylation in iMeLCs` %in% Genes_df$ensembl_gene_id_version)
+```
+
+```{r}
+genes$`Higher methylation in iMeLCs` [!genes$`Higher methylation in iMeLCs` %in% Genes_df$ensembl_gene_id_version]
+```
+
+```{r}
+table(genes$`Higher methylation in hEGCLC_p10`%in% Genes_df$ensembl_gene_id_version)
+```
+
+```{r}
+DMG_uphEGCLCs_p10vsiMeLCs <- Genes_df[Genes_df$ensembl_gene_id_version %in% genes$`Higher methylation in hEGCLC_p10`, "entrez_gene_id"]
+DMG_uphEGCLCs_p10vsiMeLCs <- na.omit(DMG_uphEGCLCs_p10vsiMeLCs[!DMG_uphEGCLCs_p10vsiMeLCs %in% ""])
+DMG_downhEGCLCs_p10vsiMeLCs <- Genes_df[Genes_df$ensembl_gene_id_version %in% genes$`Higher methylation in iMeLCs`, "entrez_gene_id"]
+DMG_downhEGCLCs_p10vsiMeLCs <- na.omit(DMG_downhEGCLCs_p10vsiMeLCs[!DMG_downhEGCLCs_p10vsiMeLCs %in% ""])
+```
+
+```{r}
+any(duplicated(DMG_uphEGCLCs_p10vsiMeLCs))
+```
+
+```{r}
+any(duplicated(DMG_downhEGCLCs_p10vsiMeLCs))
+```
+
+```{r}
+genes$`Higher methylation in hEGCLC_p10` <- DMG_uphEGCLCs_p10vsiMeLCs
+genes$`Higher methylation in iMeLCs` <- DMG_downhEGCLCs_p10vsiMeLCs
+```
+
+```{r, collapse=TRUE}
+compKEGG <- compareCluster(geneCluster   = genes,
+                         fun           = "enrichKEGG",
+                         organism="hsa",
+                         pvalueCutoff  = 0.05,
+                         pAdjustMethod = "BH", 
+                         universe = GeneUniverse_entrezid)
+```
+
+There are no significant terms (They have Padj>0.05)
+
+```{r, fig.height=10, fig.width=15}
+if (!is.null(compKEGG)) {
+  dotplot(compKEGG, showCategory = 15, title = "KEGG Pathway Enrichment Analysis")
+  }
+```
+
+```{r, collapse=TRUE}
+compGO <- compareCluster(geneCluster   = genes,
+                         fun           = "enrichGO",
+                         keyType = "ENTREZID",
+                         pvalueCutoff  = 0.05,
+                         pAdjustMethod = "BH", 
+                         OrgDb='org.Hs.eg.db', 
+                         universe=GeneUniverse_entrezid,
+                         ont = "ALL")
+```
+
+```{r, fig.height=10, fig.width=15}
+#dotplot(compGO, showCategory = 15, title = "GO Enrichment Analysis")
+```
+
+A new `DMRs_annotated` object is created in which annotation from `ChIPseeker` is added.
+
+```{r, collapse=TRUE}
+DMRs_annotated <- DMRs_GRanges
+
+mcols(DMRs_annotated$hEGCLCs_p10vsiMeLCs)$ChipSeekerAnn <- NA
+mcols(DMRs_annotated$hEGCLCs_p10vsiMeLCs)$ChipSeekerDistanceToTss <- NA
+mcols(DMRs_annotated$hEGCLCs_p10vsiMeLCs)$ChipSeekerGeneId <- NA
+
+
+m <- findOverlaps(DMRs_annotated$hEGCLCs_p10vsiMeLCs, peakAnnoList[["Higher methylation in iMeLCs"]]@anno)
+mcols(DMRs_annotated$hEGCLCs_p10vsiMeLCs)[queryHits(m), "ChipSeekerAnn"] <- mcols(peakAnnoList[["Higher methylation in iMeLCs"]]@anno)[subjectHits(m), "annotation"]
+mcols(DMRs_annotated$hEGCLCs_p10vsiMeLCs)[queryHits(m), "ChipSeekerDistanceToTss"] <- mcols(peakAnnoList[["Higher methylation in iMeLCs"]]@anno)[subjectHits(m), "distanceToTSS"]
+mcols(DMRs_annotated$hEGCLCs_p10vsiMeLCs)[queryHits(m), "ChipSeekerGeneId"] <- mcols(peakAnnoList[["Higher methylation in iMeLCs"]]@anno)[subjectHits(m), "geneId"]
+
+m <- findOverlaps(DMRs_annotated$hEGCLCs_p10vsiMeLCs, peakAnnoList[["Higher methylation in hEGCLCs_p10"]]@anno)
+mcols(DMRs_annotated$hEGCLCs_p10vsiMeLCs)[queryHits(m), "ChipSeekerAnn"] <- mcols(peakAnnoList[["Higher methylation in hEGCLCs_p10"]]@anno)[subjectHits(m), "annotation"]
+mcols(DMRs_annotated$hEGCLCs_p10vsiMeLCs)[queryHits(m), "ChipSeekerDistanceToTss"] <- mcols(peakAnnoList[["Higher methylation in hEGCLCs_p10"]]@anno)[subjectHits(m), "distanceToTSS"]
+mcols(DMRs_annotated$hEGCLCs_p10vsiMeLCs)[queryHits(m), "ChipSeekerGeneId"] <- mcols(peakAnnoList[["Higher methylation in hEGCLCs_p10"]]@anno)[subjectHits(m), "geneId"]
+
+
+```
+
+Adding entrez gene id, gene symbol and gene information
+
+```{r}
+DMRs_annotated$hEGCLCs_p10vsiMeLCs <- as.data.frame(DMRs_annotated$hEGCLCs_p10vsiMeLCs)
+DMRs_annotated$hEGCLCs_p10vsiMeLCs <- dplyr::left_join(DMRs_annotated$hEGCLCs_p10vsiMeLCs, Genes_df, by=c('ChipSeekerGeneId' = 'ensembl_gene_id_version'))
+```
+
+
+```{r}
+DMRs_annotated$hEGCLCs_p10vsiMeLCs[!is.na(DMRs_annotated$hEGCLCs_p10vsiMeLCs$hgnc_symbol),] %>% select(-c("ChipSeekerDistanceToTss", "ChipSeekerGeneId", "ensembl_gene_id", "entrez_gene_id")) %>% distinct() %>%
+    datatable(class = 'hover', rownames = FALSE, caption="DMRs - iMeLCsvshEGCLC_p10", extension='Buttons', escape = FALSE,
+              options = list(pageLength=20, dom='Bfrtip', autoWidth=TRUE,
+                             buttons=list(c('csv', 'excel'))))
+```
+
+
+
+```{r}
+saveRDS(DMRs_annotated, paste0(OutputFolder, '/', 'DMRsAnnotated2.rds'))
+```
+
+
+
+
+## 4.3 hPGCLCs vs hEGCLCs_p10
+
+### 4.3.1 Genetic annotation and visualization with __`ChIPseeker`__
+
+DMRs are now annotated to their associated genes and genomic regions using the `annotatePeaks` function of the `ChIPseeker `R package, using a TxDb object. The [`GenomicFeatures`](https://bioconductor.org/packages/devel/bioc/vignettes/GenomicFeatures/inst/doc/GenomicFeatures.html) package uses `TxDb` objects to store transcript metadata. This class maps the 5’ and 3’ untranslated regions (UTRs), protein coding sequences (CDSs) and exons for a set of mRNA transcripts to their associated genome. 
+All `TxDb` objects are backed by a SQLite database that manages genomic locations and the relationships between pre-processed mRNA transcripts, exons, protein coding sequences, and their related gene identifiers.
+
+**TxDb created by us**
+
+```{r, collapse=TRUE}
+peakAnnoList <- lapply(list("Higher methylation in hPGCLCs" = DMRs_GRanges$hEGCLCs_p10vshPGCLCs[DMRs_GRanges$hEGCLCs_p10vshPGCLCs$diff.Methy<0,], "Higher methylation in hEGCLC_p10" = DMRs_GRanges$hEGCLCs_p10vshPGCLCs[DMRs_GRanges$hEGCLCs_p10vshPGCLCs$diff.Methy>0,]), annotatePeak, TxDb=txdb_v35, tssRegion=c(-3000, 3000), verbose=FALSE)
+```
+
+```{r, collapse=TRUE}
+ChIPseeker::plotAnnoBar(peakAnnoList)
+```
+
+```{r, collapse=TRUE}
+ChIPseeker::plotDistToTSS(peakAnnoList)
+```
+
+Given a list of gene set, `compareCluster` function will compute profiles of each gene cluster. 
+
+```{r, collapse=TRUE}
+genes = lapply(peakAnnoList, function(i) unique(as.data.frame(i)$geneId))
+names(genes) = sub("_", "\n", names(genes))
+```
+
+```{r}
+any(duplicated(genes$`Higher methylation in hPGCLCs`))
+```
+
+```{r}
+any(duplicated(genes$`Higher methylation in hEGCLC_p10`))
+```
+
+There are no duplicated ensembl ids
+
+```{r}
+table(genes$`Higher methylation in hEGCLC_p10` %in% Genes_df$ensembl_gene_id_version)
+```
+
+```{r}
+genes$`Higher methylation in hEGCLC_p10` [!genes$`Higher methylation in hEGCLC_p10` %in% Genes_df$ensembl_gene_id_version]
+```
+
+```{r}
+table(genes$`Higher methylation in hPGCLCs`%in% Genes_df$ensembl_gene_id_version)
+```
+
+```{r}
+DMG_uphPGCLCsvshEGCLC_p10 <- Genes_df[Genes_df$ensembl_gene_id_version %in% genes$`Higher methylation in hPGCLCs`, "entrez_gene_id"]
+DMG_uphPGCLCsvshEGCLC_p10 <- na.omit(DMG_uphPGCLCsvshEGCLC_p10[!DMG_uphPGCLCsvshEGCLC_p10 %in% ""])
+DMG_downhPGCLCsvshEGCLC_p10 <- Genes_df[Genes_df$ensembl_gene_id_version %in% genes$`Higher methylation in hEGCLC_p10`, "entrez_gene_id"]
+DMG_downhPGCLCsvshEGCLC_p10 <- na.omit(DMG_downhPGCLCsvshEGCLC_p10[!DMG_downhPGCLCsvshEGCLC_p10 %in% ""])
+```
+
+```{r}
+any(duplicated(DMG_uphPGCLCsvshEGCLC_p10))
+```
+
+```{r}
+any(duplicated(DMG_downhPGCLCsvshEGCLC_p10))
+```
+
+```{r}
+genes$`Higher methylation in hPGCLCs` <- DMG_uphPGCLCsvshEGCLC_p10
+genes$`Higher methylation in hEGCLC_p10` <- DMG_downhPGCLCsvshEGCLC_p10
+```
+
+```{r, collapse=TRUE}
+compKEGG <- compareCluster(geneCluster   = genes,
+                         fun           = "enrichKEGG",
+                         organism="hsa",
+                         pvalueCutoff  = 0.05,
+                         pAdjustMethod = "BH", 
+                         universe = GeneUniverse_entrezid)
+```
+
+There are no significant terms (They have Padj>0.05)
+```{r, fig.height=10, fig.width=15}
+#dotplot(compKEGG, showCategory = 15, title = "KEGG Pathway Enrichment Analysis")
+```
+
+```{r, collapse=TRUE}
+compGO <- compareCluster(geneCluster   = genes,
+                         fun           = "enrichGO",
+                         keyType = "ENTREZID",
+                         pvalueCutoff  = 0.05,
+                         pAdjustMethod = "BH", 
+                         OrgDb='org.Hs.eg.db', 
+                         universe=GeneUniverse_entrezid,
+                         ont = "ALL")
+```
+
+```{r, fig.height=10, fig.width=15}
+dotplot(compGO, showCategory = 15, title = "GO Enrichment Analysis")
+```
+
+A new `DMRs_annotated` object is created in which annotation from `ChIPseeker` is added.
+
+```{r, collapse=TRUE}
+DMRs_annotated <- DMRs_GRanges
+
+mcols(DMRs_annotated$hEGCLCs_p10vshPGCLCs)$ChipSeekerAnn <- NA
+mcols(DMRs_annotated$hEGCLCs_p10vshPGCLCs)$ChipSeekerDistanceToTss <- NA
+mcols(DMRs_annotated$hEGCLCs_p10vshPGCLCs)$ChipSeekerGeneId <- NA
+
+m <- findOverlaps(DMRs_annotated$hEGCLCs_p10vshPGCLCs, peakAnnoList[["Higher methylation in hPGCLCs"]]@anno)
+mcols(DMRs_annotated$hEGCLCs_p10vshPGCLCs)[queryHits(m), "ChipSeekerAnn"] <- mcols(peakAnnoList[["Higher methylation in hPGCLCs"]]@anno)[subjectHits(m), "annotation"]
+mcols(DMRs_annotated$hEGCLCs_p10vshPGCLCs)[queryHits(m), "ChipSeekerDistanceToTss"] <- mcols(peakAnnoList[["Higher methylation in hPGCLCs"]]@anno)[subjectHits(m), "distanceToTSS"]
+mcols(DMRs_annotated$hEGCLCs_p10vshPGCLCs)[queryHits(m), "ChipSeekerGeneId"] <- mcols(peakAnnoList[["Higher methylation in hPGCLCs"]]@anno)[subjectHits(m), "geneId"]
+
+m <- findOverlaps(DMRs_annotated$hEGCLCs_p10vshPGCLCs, peakAnnoList[["Higher methylation in hEGCLC_p10"]]@anno)
+mcols(DMRs_annotated$hEGCLCs_p10vshPGCLCs)[queryHits(m), "ChipSeekerAnn"] <- mcols(peakAnnoList[["Higher methylation in hEGCLC_p10"]]@anno)[subjectHits(m), "annotation"]
+mcols(DMRs_annotated$hEGCLCs_p10vshPGCLCs)[queryHits(m), "ChipSeekerDistanceToTss"] <- mcols(peakAnnoList[["Higher methylation in hEGCLC_p10"]]@anno)[subjectHits(m), "distanceToTSS"]
+mcols(DMRs_annotated$hEGCLCs_p10vshPGCLCs)[queryHits(m), "ChipSeekerGeneId"] <- mcols(peakAnnoList[["Higher methylation in hEGCLC_p10"]]@anno)[subjectHits(m), "geneId"]
+```
+
+Adding entrez gene id, gene symbol and gene information
+
+```{r}
+DMRs_annotated$hEGCLCs_p10vshPGCLCs <- as.data.frame(DMRs_annotated$hEGCLCs_p10vshPGCLCs)
+DMRs_annotated$hEGCLCs_p10vshPGCLCs <- dplyr::left_join(DMRs_annotated$hEGCLCs_p10vshPGCLCs, Genes_df, by=c('ChipSeekerGeneId' = 'ensembl_gene_id_version'))
+```
+
+```{r}
+DMRs_annotated$hEGCLCs_p10vshPGCLCs[!is.na(DMRs_annotated$hEGCLCs_p10vshPGCLCs$hgnc_symbol),] %>% select(-c("ChipSeekerDistanceToTss", "ChipSeekerGeneId", "ensembl_gene_id", "entrez_gene_id")) %>% distinct() %>%
+    datatable(class = 'hover', rownames = FALSE, caption="DMRs - hEGCLCs_p10vshPGCLCs", extension='Buttons', escape = FALSE,
+              options = list(pageLength=20, dom='Bfrtip', autoWidth=TRUE,
+                             buttons=list(c('csv', 'excel'))))
+```
+
+
+
+```{r}
+saveRDS(DMRs_annotated, paste0(OutputFolder, '/', 'DMRsAnnotated3.rds'))
+```
+
+
+
+
+## 4.4 hEGCLCs_p5 vs hEGCLCs_p10
+
+### 4.4.1 Genetic annotation and visualization with __`ChIPseeker`__
+
+DMRs are now annotated to their associated genes and genomic regions using the `annotatePeaks` function of the `ChIPseeker `R package, using a TxDb object. The [`GenomicFeatures`](https://bioconductor.org/packages/devel/bioc/vignettes/GenomicFeatures/inst/doc/GenomicFeatures.html) package uses `TxDb` objects to store transcript metadata. This class maps the 5’ and 3’ untranslated regions (UTRs), protein coding sequences (CDSs) and exons for a set of mRNA transcripts to their associated genome. 
+All `TxDb` objects are backed by a SQLite database that manages genomic locations and the relationships between pre-processed mRNA transcripts, exons, protein coding sequences, and their related gene identifiers.
+
+**TxDb created by us**
+
+
+```{r, collapse=TRUE}
+peakAnnoList <- lapply(list("Higher methylation in hEGCLCs_p5" = DMRs_GRanges$hEGCLCs_p10vshEGCLCs_p5[DMRs_GRanges$hEGCLCs_p10vshEGCLCs_p5$diff.Methy<0,], "Higher methylation in hEGCLCs_p10" = DMRs_GRanges$hEGCLCs_p10vshEGCLCs_p5[DMRs_GRanges$hEGCLCs_p10vshEGCLCs_p5$diff.Methy>0,]), annotatePeak, TxDb=txdb_v35, tssRegion=c(-3000, 3000), verbose=FALSE)
+```
+
+```{r, collapse=TRUE}
+ChIPseeker::plotAnnoBar(peakAnnoList)
+```
+
+```{r, collapse=TRUE}
+ChIPseeker::plotDistToTSS(peakAnnoList)
+```
+
+Given a list of gene set, `compareCluster` function will compute profiles of each gene cluster. 
+
+```{r, collapse=TRUE}
+genes = lapply(peakAnnoList, function(i) unique(as.data.frame(i)$geneId))
+names(genes) = sub("_", "\n", names(genes))
+```
+
+```{r}
+any(duplicated(genes$`Higher methylation in hEGCLCs_p5`))
+```
+
+```{r}
+any(duplicated(genes$`Higher methylation in hEGCLCs_p10`))
+```
+
+There are no duplicated ensembl ids
+
+```{r}
+table(genes$`Higher methylation in hEGCLCs_p10` %in% Genes_df$ensembl_gene_id_version)
+```
+
+```{r}
+genes$`Higher methylation in hEGCLCs_p10` [!genes$`Higher methylation in hEGCLCs_p10` %in% Genes_df$ensembl_gene_id_version]
+```
+
+```{r}
+table(genes$`Higher methylation in hEGCLCs_p5`%in% Genes_df$ensembl_gene_id_version)
+```
+
+```{r}
+DMG_uphEGCLCs_p5vshEGCLCs_p10 <- Genes_df[Genes_df$ensembl_gene_id_version %in% genes$`Higher methylation in hEGCLCs_p5`, "entrez_gene_id"]
+DMG_uphEGCLCs_p5vshEGCLCs_p10 <- na.omit(DMG_uphEGCLCs_p5vshEGCLCs_p10[!DMG_uphEGCLCs_p5vshEGCLCs_p10 %in% ""])
+DMG_downhEGCLCs_p5vshEGCLCs_p10 <- Genes_df[Genes_df$ensembl_gene_id_version %in% genes$`Higher methylation in hEGCLCs_p10`, "entrez_gene_id"]
+DMG_downhEGCLCs_p5vshEGCLCs_p10 <- na.omit(DMG_downhEGCLCs_p5vshEGCLCs_p10[!DMG_downhEGCLCs_p5vshEGCLCs_p10 %in% ""])
+```
+
+```{r}
+any(duplicated(DMG_uphEGCLCs_p5vshEGCLCs_p10))
+```
+
+```{r}
+any(duplicated(DMG_downhEGCLCs_p5vshEGCLCs_p10))
+```
+
+```{r}
+genes$`Higher methylation in hEGCLCs_p5` <- DMG_uphEGCLCs_p5vshEGCLCs_p10
+genes$`Higher methylation in hEGCLCs_p10` <- DMG_downhEGCLCs_p5vshEGCLCs_p10
+```
+
+```{r, collapse=TRUE}
+compKEGG <- compareCluster(geneCluster   = genes,
+                         fun           = "enrichKEGG",
+                         organism="hsa",
+                         pvalueCutoff  = 0.05,
+                         pAdjustMethod = "BH", 
+                         universe = GeneUniverse_entrezid)
+```
+
+There are no significant terms (They have Padj>0.05)
+```{r, fig.height=10, fig.width=15}
+#dotplot(compKEGG, showCategory = 15, title = "KEGG Pathway Enrichment Analysis")
+```
+
+```{r, collapse=TRUE}
+compGO <- compareCluster(geneCluster   = genes,
+                         fun           = "enrichGO",
+                         keyType = "ENTREZID",
+                         pvalueCutoff  = 0.05,
+                         pAdjustMethod = "BH", 
+                         OrgDb='org.Hs.eg.db', 
+                         universe=GeneUniverse_entrezid,
+                         ont = "ALL")
+```
+
+```{r, fig.height=10, fig.width=15}
+#dotplot(compGO, showCategory = 15, title = "GO Enrichment Analysis")
+```
+
+A new `DMRs_annotated` object is created in which annotation from `ChIPseeker` is added.
+
+```{r, collapse=TRUE}
+DMRs_annotated <- DMRs_GRanges
+
+mcols(DMRs_annotated$hEGCLCs_p10vshEGCLCs_p5)$ChipSeekerAnn <- NA
+mcols(DMRs_annotated$hEGCLCs_p10vshEGCLCs_p5)$ChipSeekerDistanceToTss <- NA
+mcols(DMRs_annotated$hEGCLCs_p10vshEGCLCs_p5)$ChipSeekerGeneId <- NA
+
+m <- findOverlaps(DMRs_annotated$hEGCLCs_p10vshEGCLCs_p5, peakAnnoList[["Higher methylation in hEGCLCs_p5"]]@anno)
+mcols(DMRs_annotated$hEGCLCs_p10vshEGCLCs_p5)[queryHits(m), "ChipSeekerAnn"] <- mcols(peakAnnoList[["Higher methylation in hEGCLCs_p5"]]@anno)[subjectHits(m), "annotation"]
+mcols(DMRs_annotated$hEGCLCs_p10vshEGCLCs_p5)[queryHits(m), "ChipSeekerDistanceToTss"] <- mcols(peakAnnoList[["Higher methylation in hEGCLCs_p5"]]@anno)[subjectHits(m), "distanceToTSS"]
+mcols(DMRs_annotated$hEGCLCs_p10vshEGCLCs_p5)[queryHits(m), "ChipSeekerGeneId"] <- mcols(peakAnnoList[["Higher methylation in hEGCLCs_p5"]]@anno)[subjectHits(m), "geneId"]
+
+m <- findOverlaps(DMRs_annotated$hEGCLCs_p10vshEGCLCs_p5, peakAnnoList[["Higher methylation in hEGCLCs_p10"]]@anno)
+mcols(DMRs_annotated$hEGCLCs_p10vshEGCLCs_p5)[queryHits(m), "ChipSeekerAnn"] <- mcols(peakAnnoList[["Higher methylation in hEGCLCs_p10"]]@anno)[subjectHits(m), "annotation"]
+mcols(DMRs_annotated$hEGCLCs_p10vshEGCLCs_p5)[queryHits(m), "ChipSeekerDistanceToTss"] <- mcols(peakAnnoList[["Higher methylation in hEGCLCs_p10"]]@anno)[subjectHits(m), "distanceToTSS"]
+mcols(DMRs_annotated$hEGCLCs_p10vshEGCLCs_p5)[queryHits(m), "ChipSeekerGeneId"] <- mcols(peakAnnoList[["Higher methylation in hEGCLCs_p10"]]@anno)[subjectHits(m), "geneId"]
+```
+
+Adding entrez gene id, gene symbol and gene information
+
+```{r}
+DMRs_annotated$hEGCLCs_p10vshEGCLCs_p5 <- as.data.frame(DMRs_annotated$hEGCLCs_p10vshEGCLCs_p5)
+DMRs_annotated$hEGCLCs_p10vshEGCLCs_p5 <- dplyr::left_join(DMRs_annotated$hEGCLCs_p10vshEGCLCs_p5, Genes_df, by=c('ChipSeekerGeneId' = 'ensembl_gene_id_version'))
+```
+
+```{r}
+DMRs_annotated$hEGCLCs_p10vshEGCLCs_p5[!is.na(DMRs_annotated$hEGCLCs_p10vshEGCLCs_p5$hgnc_symbol),] %>% select(-c("ChipSeekerDistanceToTss", "ChipSeekerGeneId", "ensembl_gene_id", "entrez_gene_id")) %>% distinct() %>%
+    datatable(class = 'hover', rownames = FALSE, caption="DMRs - hEGCLCs_p10vshEGCLCs_p5", extension='Buttons', escape = FALSE,
+              options = list(pageLength=20, dom='Bfrtip', autoWidth=TRUE,
+                             buttons=list(c('csv', 'excel'))))
+```
+
+
+
+```{r}
+saveRDS(DMRs_annotated, paste0(OutputFolder, '/', 'DMRsAnnotated4.rds'))
+```
+
+
+
+# 5. Saving DMRs with annotation and Session Info
+
+```{r SaveRDS}
+saveRDS(Genes_df, paste0(OutputFolder, '/', 'GeneUniverse.rds'))
+saveRDS(DMRs_annotated, paste0(OutputFolder, '/', 'DMRsAnnotated_final.rds'))
+```
+
+```{r SaveSession}
+SessionInfo <- sessionInfo()
+Date <- date()
+```
+
+```{r SessionInfo}
+Date
+SessionInfo
+```

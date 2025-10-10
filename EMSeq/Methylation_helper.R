@@ -2,16 +2,36 @@
 
 library(tidyr)
 
-violin_plot <- function(meth_levels, stat = "median"){
+violin_plot <- function(meth_levels, stat = "median", subset = NULL){
   
   df_plot <- as.data.frame(meth_levels)
+  
+  if(!is.null(subset)){
+    if(subset < nrow(df_plot)){
+      set.seed(123)
+      message("Subsetting taking random CpGs")
+      df_plot <- df_plot[sample(nrow(df_plot), subset), ]
+    } else {
+      warning("subset size is greater than or equal to number of rows in meth_levels!")
+    }
+  }
+  
   plot.data <- suppressWarnings(data.table::melt(df_plot))
   colnames(plot.data) <- c("variable", "Meth")
   
-  p <- ggplot2::ggplot(plot.data, ggplot2::aes(x = variable, y = Meth,fill = variable)) + ggplot2::geom_violin(alpha = 0.8) + ggplot2::theme_classic(base_size = 14) + labs(title=stat,
-    y = "CpG methylation levels (%)") + theme(axis.title.x = element_blank(), axis.text.x = element_text(size = 12,colour = "black", angle = 90, vjust = 0.5, hjust=1), 
-          axis.text.y = element_text(size = 12, colour = "black"), legend.title = element_blank()) +stat_summary(fun = stat, geom = "crossbar", width = 0.5,colour = "red")
-  p
+  p <- ggplot2::ggplot(plot.data, ggplot2::aes(x = variable, y = Meth, fill = variable)) +
+    ggplot2::geom_violin(alpha = 0.8) +
+    ggplot2::theme_classic(base_size = 14) +
+    ggplot2::labs(title = stat, y = "CpG methylation levels (%)") +
+    ggplot2::theme(
+      axis.title.x = element_blank(),
+      axis.text.x = element_text(size = 12, colour = "black", angle = 90, vjust = 0.5, hjust = 1),
+      axis.text.y = element_text(size = 12, colour = "black"),
+      legend.title = element_blank()
+    ) +
+    ggplot2::stat_summary(fun = stat, geom = "crossbar", width = 0.5, colour = "red")
+  
+  return(p)
 }
 
 
@@ -177,6 +197,7 @@ DMRbarplot_all <- function(DMR, comparisons_ordered, label_y, y_lim = NULL, inte
 }
 
 #Violin plots of DMRs stratified by samples/genomic regions
+
 
 DMRviolin <- function(bsseq_obj, assayName = "Meth", title = "Methylation Levels in DMRs", 
                       fill = "Sample", interactive = FALSE, colors = NULL, stat = "median"){

@@ -1,0 +1,273 @@
+---
+title: 'Comparison escapees vs non-escapees'
+author: 'Gaja Matassa'
+date: 'Date: `r format(Sys.Date(), "%B %d, %Y")`'
+output:
+    html_document:
+        toc: true
+        toc_float: true
+        theme: 'united'
+        highlight: 'kate'
+        code_folding: hide
+params: 
+    InputFolder: '~/DataDir/7.EscapeesExploration/Output/EscapeeBsseq/'
+    num_permutations: 500
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, collapse = TRUE, warning = FALSE)
+```
+
+```{r}
+library(plyr)
+library(dplyr)
+library(bsseq)
+library(dmrseq)
+library(ggplot2)
+source("../Methylation_helper.R")
+```
+
+Set random seed and number of permutations
+```{r}
+set.seed(123)
+num_permutations <- params$num_permutations
+```
+
+# 1. Data loading and fast exploration by PCA
+
+Loading bsseq objects
+
+```{r}
+bsseq_obj <- readRDS("~/DataDir/1.PreliminaryAnalysis/Output/WithSelectedEGCLCs/bsseq_obj_sharedby75ofall.rds") #getting bsseq object where sample selection and CpG filtering were already performed 
+bsseq_obj_escapees <- readRDS(paste0(params$InputFolder, "bsseq_obj_escapees.rds"))
+bsseq_obj_NonEscapees <- readRDS(paste0(params$InputFolder, "bsseq_obj_NonEscapees.rds"))
+```
+
+* Our bsseq object contain `r dim(bsseq_obj)[1]` CpG loci.
+* Among them `r dim(bsseq_obj_escapees)[1]` CpG loci belong to escapees regions (escapee CpGs).
+* While `r dim(bsseq_obj_NonEscapees)[1]` CpG loci do not belong to escapees regions (non-escapee CpGs).
+
+**Colors for figures**
+
+```{r}
+cellTypes_colors <- c(hiPSCs ="#dd1c77", iMeLCs ="#377eb8", hPGCLCs ="#4daf4a", hEGCLCs = "#ff7f00")
+```
+
+## PCA only on escapee CpGs
+
+```{r, collapse=TRUE, fig.width=8}
+pca_res <- do_PCA(getMeth(bsseq_obj_escapees, type = "raw"))
+sample_anno <- bsseq::pData(bsseq_obj_escapees)
+plot_PCA(pca_res = pca_res, anno = sample_anno, col_anno = "Type", shape_anno = NULL, custom_colors = cellTypes_colors, point_size = 5)
+```
+
+## PCA only on non-escapee CpGs
+
+```{r, collapse=TRUE, fig.width=8}
+pca_res <- do_PCA(getMeth(bsseq_obj_NonEscapees, type = "raw"))
+sample_anno <- bsseq::pData(bsseq_obj_NonEscapees)
+plot_PCA(pca_res = pca_res, anno = sample_anno, col_anno = "Type", shape_anno = NULL, custom_colors = cellTypes_colors, point_size = 5)
+```
+
+As expected it resembles the PCA done on the complete one, since we removed only `r dim(bsseq_obj_escapees)[1]` out of a total of `r dim(bsseq_obj)[1]` CpG loci.
+
+# 2.Generation of `r num_permutations` random sets of `r dim(bsseq_obj_escapees)[1]` non-escapee CpGs and distributions plots
+
+Let's generate random indices to randomly select `r dim(bsseq_obj_escapees)[1]` CpG loci among the non-escapee ones.
+
+```{r}
+random_sets <- list()
+
+for (i in 1:num_permutations) {
+  random_indices <- sample(1:dim(bsseq_obj_NonEscapees)[1], dim(bsseq_obj_escapees)[1], replace = FALSE)
+  bsseq_obj_randomNonEscapees <- bsseq_obj_NonEscapees[random_indices, ]
+  
+  random_sets[[i]] <- bsseq_obj_randomNonEscapees
+}
+```
+
+**Head of BSSEQ with escapee CpGs**
+
+```{r, collapse=FALSE}
+getMeth(bsseq_obj_escapees, type = "raw") %>% head()
+```
+
+**Escapee CpG methylation distribution plot**
+
+```{r}
+plotEmpiricalDistribution(bsseq_obj_escapees, 
+                          bySample = TRUE,
+                          testCovariate = "Type",
+                          adj = 3) + guides(linetype="none") + 
+  labs(title = "Escapee CpG methylation distribution by cell type") + ggplot2::scale_color_manual(values = cellTypes_colors)
+```
+
+```{r}
+plotEmpiricalDistribution(bsseq_obj_escapees, 
+                          bySample = FALSE,
+                          testCovariate = "Line",
+                          adj = 3) + guides(linetype="none") + 
+  labs(title = "Escapee CpG methylation distribution collapsing cell types")
+```
+
+**Non-Escapee CpG methylation distribution plot**
+
+```{r}
+plotEmpiricalDistribution(bsseq_obj_NonEscapees, 
+                          bySample = TRUE,
+                          testCovariate = "Type",
+                          adj = 3) + guides(linetype="none") + 
+  labs(title = "Non-escapee CpG methylation distribution by cell type") + ggplot2::scale_color_manual(values = cellTypes_colors)
+```
+
+```{r}
+plotEmpiricalDistribution(bsseq_obj_NonEscapees, 
+                          bySample = FALSE,
+                          testCovariate = "Line",
+                          adj = 3) + guides(linetype="none") + 
+  labs(title = "Non-escapee CpG methylation distribution collapsing cell types")
+```
+
+**Head of first BSSEQ with randomly selected non-escapee CpGs**
+
+```{r, collapse=FALSE}
+getMeth(random_sets[[1]], type = "raw") %>% head()
+```
+
+**First set of randomly selected non-escapee CpG methylation distribution plot**
+
+```{r}
+plotEmpiricalDistribution(random_sets[[1]], 
+                          bySample = TRUE,
+                          testCovariate = "Type",
+                          adj = 3) + guides(linetype="none") + 
+  labs(title = "Non-escapee CpG methylation distribution by cell type (1)") + ggplot2::scale_color_manual(values = cellTypes_colors)
+```
+
+**Head of second BSSEQ with randomly selected non-escapee CpGs**
+
+```{r, collapse=FALSE}
+getMeth(random_sets[[2]], type = "raw") %>% head()
+```
+
+**Second set of randomly selected non-escapee CpG methylation distribution plot**
+
+```{r}
+plotEmpiricalDistribution(random_sets[[2]], 
+                          bySample = TRUE,
+                          testCovariate = "Type",
+                          adj = 3) + guides(linetype="none") + 
+  labs(title = "Non-escapee CpG methylation distribution by cell type (2)") + ggplot2::scale_color_manual(values = cellTypes_colors)
+```
+
+# 3. Kolmogorov-Smirnov test
+
+Example of KS test result comparing distributions in case of hEGCLC_rep1 sample: escapee CpG methylation levels vs first randomly selected non-escapee set.
+
+```{r, collapse=FALSE}
+ks_test_result <- ks.test(getMeth(bsseq_obj_escapees, type = "raw")[, "hEGCLC_rep1"], getMeth(random_sets[[1]], type = "raw")[, "hEGCLC_rep1"])
+print(ks_test_result)
+```
+
+Example of KS test result comparing distributions in case of hEGCLC_rep1 sample: first randomly selected non-escapee set vs second randomly selected non-escapee set.
+
+```{r, collapse=FALSE}
+ks_test_result <- ks.test(getMeth(random_sets[[1]], type = "raw")[, "hEGCLC_rep1"], getMeth(random_sets[[2]], type = "raw")[, "hEGCLC_rep1"])
+print(ks_test_result)
+```
+
+Example of KS test result comparing distributions: escapee CpG methylation levels (hiPSC_rep2 sample) vs first randomly selected non-escapee set (hPGCLC_rep2 sample).
+
+```{r, collapse=FALSE}
+ks_test_result <- ks.test(getMeth(random_sets[[1]], type = "raw")[, "hiPSC_rep2"], getMeth(random_sets[[1]], type = "raw")[, "hPGCLC_rep2"])
+print(ks_test_result)
+```
+
+Example of KS test result comparing distributions: escapee CpG methylation levels vs first randomly selected non-escapee set **considering the mean levels across cell types (rowwise)**.
+
+```{r, collapse=FALSE}
+ks_test_result <- ks.test(getMeth(bsseq_obj_escapees, type = "raw") %>% rowMeans(na.rm = TRUE), getMeth(random_sets[[1]], type = "raw") %>% rowMeans(na.rm = TRUE))
+print(ks_test_result)
+```
+
+Example of KS test result comparing distributions: first randomly selected non-escapee set vs second randomly selected non-escapee set **considering the mean levels across cell types (rowwise)**.
+
+```{r, collapse=FALSE}
+ks_test_result <- ks.test(getMeth(random_sets[[1]], type = "raw") %>% rowMeans(na.rm = TRUE), getMeth(random_sets[[2]], type = "raw") %>% rowMeans(na.rm = TRUE))
+print(ks_test_result)
+```
+
+*Let's calculate the mean methylation levels across cell types in all sets of randomly selected non-escapee CpGs.*
+
+```{r}
+random_MeanMethLevels <- lapply(random_sets, function(bsseq){
+  getMeth(bsseq, type = "raw") %>% rowMeans(na.rm = TRUE)})
+```
+
+**Let's do KS test comparing escapee CpG methylation levels vs all `r num_permutations` randomly selected non-escapee sets.**
+```{r, collapse=FALSE}
+ks_test_results <- lapply(random_MeanMethLevels, function(random_MeanMeth) {
+  ks.test(getMeth(bsseq_obj_escapees, type = "raw") %>% rowMeans(na.rm = TRUE), random_MeanMeth)
+})
+pvalues_kstest <- sapply(ks_test_results, function(result) {
+  result$p.value
+})
+adjusted_pvalues_kstest <- p.adjust(pvalues_kstest, method = "fdr")
+print(adjusted_pvalues_kstest)
+```
+
+How many adjusted p-values are < 0.05?
+
+```{r, collapse=FALSE}
+table(adjusted_pvalues_kstest < 0.05)
+```
+
+**Let's do KS test comparing first randomly selected non-escapee set vs all `r num_permutations` randomly selected non-escapee sets.**
+
+```{r, collapse=FALSE}
+ks_test_results <- lapply(random_MeanMethLevels, function(random_MeanMeth) {
+  ks.test(random_MeanMethLevels[[1]], random_MeanMeth)
+})
+pvalues_kstest <- sapply(ks_test_results, function(result) {
+  result$p.value
+})
+adjusted_pvalues_kstest <- p.adjust(pvalues_kstest, method = "fdr")
+print(adjusted_pvalues_kstest)
+```
+
+How many adjusted p-values are < 0.05?
+
+```{r, collapse=FALSE}
+table(adjusted_pvalues_kstest < 0.05)
+```
+
+# 4.Escapee and non escapee CpG methylation distribution plot 
+
+```{r}
+MeanMethLevels_df <- c(unlist(random_MeanMethLevels), getMeth(bsseq_obj_escapees, type = "raw") %>% rowMeans(na.rm = TRUE) %>% as.vector()) %>% as.data.frame()
+colnames(MeanMethLevels_df) <- "MeanMeth"
+MeanMethLevels_df$Distribution <- c(paste0("Random_", rep(1:num_permutations, each = dim(bsseq_obj_escapees)[1])), rep("Escapees_CpGs", each = dim(bsseq_obj_escapees)[1]))
+MeanMethLevels_df$Category <- "Non Escapees"
+MeanMethLevels_df$Category[(nrow(MeanMethLevels_df)+1-nrow(bsseq_obj_escapees)):nrow(MeanMethLevels_df)] <- "Escapees"
+```
+
+```{r, fig.width=10}
+ggplot(MeanMethLevels_df, aes(x = MeanMeth, color = Category, group = Distribution)) +
+  geom_density(alpha = 0.5)  +
+  labs(
+    title = "Distribution CpG mean methylation levels in escapees and non-escapees regions", 
+    x = "Mean Methylation Levels across cell types", 
+    y = "Density", 
+    color = "Category"
+  ) +
+  scale_color_manual(values = c("Escapees" = "#FF7D00", "Non Escapees" = "#15616D")) + 
+  theme_minimal()
+```
+
+# 5.Session Info
+
+```{r}
+date()
+sessionInfo()
+```
+
