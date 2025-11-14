@@ -2,15 +2,17 @@
 title: "hEGCLC paper"
 short_title: "hEGCLC paper"
 subtitle: 
-   Repository to collect the code used to analyze the scRNA-Seq and DNA methylation data for the paper ()[] 
 
-   Docker image for most of the single cell analysis (notebooks in folders from 00 to 05) can be retrieved via `docker pull alessiavalenti/transgenerationalhub:transgenerational-1.1.7`. 
+Html versions of scripts available in the GitHub repository [EGCLC_paper_release](https://github.com/GiuseppeTestaLab/EGCLC_paper_release).
 
 final: |
 
-
 pages:
 
+  # =============================
+  #         scRNA-Seq analyses
+  # =============================
+  
    00_ExplorationQC_DimRed_Clustering.ipynb:
       notebook: "scRNASeq/00_Preprocessing/00_ExplorationQC_DimRed_Clustering.ipynb"
       description: First exploration, quality check, dimensionality reduction and clustering of the scRNA-Seq data.
@@ -183,6 +185,10 @@ pages:
       notebook: "scRNASeq/04_edgeR_DEGs_inTime/html/GO_cluster_14.html"
       description: Functional enrichment of genes in cluster 14 from clustering in notebook 04a
 
+  # =============================
+  #         GRN analyses
+  # =============================
+
    06.1_CellOracle.ipynb:
       notebook: "scRNASeq/06_GRNs/1_CellOracle.ipynb"
       description: |
@@ -215,62 +221,174 @@ pages:
       notebook: "scRNASeq/06_GRNs/GRN_iMeLC.ipynb"
       description: |
 
-   PreliminaryExploration:
-      notebook: "EMSeq/1.ExploratoryAnalysis/PreliminaryExploration.html"
-      description: |
+  # =============================
+  #         EMSeq analyses
+  # =============================
 
-   DMRCalling:
-      notebook: "EMSeq/2.DifferentialAnalysis/DMRCalling.html"
-      description: |
+  # -----------------------------
+  # 1. Core EMSeq Analysis
+  # -----------------------------
+  
+  PreliminaryExploration:
+    notebook: "EMSeq/1.ExploratoryAnalysis/PreliminaryExploration.html"
+    description: Preliminary exploration of DNA methylation profiles.
 
-   TwistBedAnnotation:
-      notebook: "EMSeq/3.TwistRegionAnnotation/TwistBedAnnotation.html"
-      description: |
+  DMRCalling:
+    notebook: "EMSeq/2.DifferentialAnalysis/DMRCalling.html"
+    description: Differentially methylated regions (DMRs) identification.
 
-   DMRAnnotation:
-      notebook: "EMSeq/4.DMRAnnotation/DMRAnnotation.html"
-      description: |
+  TwistBedAnnotation:
+    notebook: "EMSeq/3.TwistRegionAnnotation/TwistBedAnnotation.html"
+    description: Functional and genomic annotation of targeted Twist regions.
 
-   DMRplots:
-      notebook: "EMSeq/5.DMRInterpretation/DMRVisualization/DMRplots.html"
-      description: |
+  DMRAnnotation:
+    notebook: "EMSeq/4.DMRAnnotation/DMRAnnotation.html"
+    description: Functional and genomic annotation of identified DMRs.
 
-   TopGO_hiPSCs_vs_hPGCLCs_all:
-      notebook: "EMSeq/5.DMRInterpretation/TopGO/TopGO_hiPSCs_vs_hPGCLCs_all.html"
-      description: |
+  DMRplots:
+    notebook: "EMSeq/5.DMRInterpretation/DMRVisualization/DMRplots.html"
+    description: Visualization of DMR methylation patterns across samples.
 
-   TopGO_iMeLCs_vs_hPGCLCs_all:
-      notebook: "EMSeq/5.DMRInterpretation/TopGO/TopGO_iMeLCs_vs_hPGCLCs_all.html"
-      description: |
+  TopGO_hiPSCs_vs_hPGCLCs_all:
+    notebook: "EMSeq/5.DMRInterpretation/TopGO/TopGO_hiPSCs_vs_hPGCLCs_all.html"
+    description: GO enrichment analysis for DMR-associated genes in hiPSCs vs hPGCLCs.
 
-   TopGO_hEGCLCs_vs_hiPSCs_all:
-      notebook: "EMSeq/5.DMRInterpretation/TopGO/TopGO_hEGCLCs_vs_hiPSCs_all.html"
-      description: |
+  TopGO_iMeLCs_vs_hPGCLCs_all:
+    notebook: "EMSeq/5.DMRInterpretation/TopGO/TopGO_iMeLCs_vs_hPGCLCs_all.html"
+    description: GO enrichment analysis for DMR-associated genes in iMeLCs vs hPGCLCs.
 
-   TopGO_hEGCLCs_vs_hPGCLCs_all:
-      notebook: "EMSeq/5.DMRInterpretation/TopGO/TopGO_hEGCLCs_vs_hPGCLCs_all.html"
-      description: |
+  TopGO_hEGCLCs_vs_hiPSCs_all:
+    notebook: "EMSeq/5.DMRInterpretation/TopGO/TopGO_hEGCLCs_vs_hiPSCs_all.html"
+    description: GO enrichment analysis for DMR-associated genes in hEGCLCs vs hiPSCs.
 
-   Heatmaps_imprinted_regions:
-      notebook: "EMSeq/6.ImprintedExploration/Heatmaps_imprinted_regions.html"
-      description: |
+  TopGO_hEGCLCs_vs_hPGCLCs_all:
+    notebook: "EMSeq/5.DMRInterpretation/TopGO/TopGO_hEGCLCs_vs_hPGCLCs_all.html"
+    description: GO enrichment analysis for DMR-associated genes in hEGCLCs vs hPGCLCs.
 
-   DMRplots_imprinted_regions:
-      notebook: "EMSeq/6.ImprintedExploration/DMRplots_imprinted_regions.html"
-      description: |
+  Heatmaps_imprinted_regions:
+    notebook: "EMSeq/6.ImprintedExploration/Heatmaps_imprinted_regions.html"
+    description: Heatmap visualization of methylation in imprinted regions.
 
-   1.EscapeeBsseqGeneration:
-      notebook: "EMSeq/7.EscapeesExploration/1.EscapeeBsseqGeneration.html"
-      description: |
+  DMRplots_imprinted_regions:
+    notebook: "EMSeq/6.ImprintedExploration/DMRplots_imprinted_regions.html"
+    description: Visualization of methylation patterns in imprinted genomic regions.
 
-   2.EscapeeAnnotationAndFunctional:
-      notebook: "EMSeq/7.EscapeesExploration/2.EscapeeAnnotationAndFunctional.html"
-      description: |
+  # -----------------------------
+  # 2. Tang Dataset (Escapees)
+  # -----------------------------
+  
+  1.EscapeeBsseqGeneration_Tang:
+    notebook: "EMSeq/7.EscapeesExploration/1.EscapeeBsseqGeneration_Tang.html"
+    description: Generation of bsseq object with measured CpGs within Tang escapee regions.
 
-   3.EscapeeHeatmaps:
-      notebook: "EMSeq/7.EscapeesExploration/3.EscapeeHeatmaps.html"
-      description: |
+  2.EscapeeAnnotationAndFunctional_Tang:
+    notebook: "EMSeq/7.EscapeesExploration/2.EscapeeAnnotationAndFunctional_Tang.html"
+    description: Functional annotation Tang escapee regions and GO of associated genes.
 
-   4.EscapeesvsNonEscapees:
-      notebook: "EMSeq/7.EscapeesExploration/4.EscapeesvsNonEscapees.html"
-      description: |
+  3.EscapeeHeatmaps_Tang:
+    notebook: "EMSeq/7.EscapeesExploration/3.EscapeeHeatmaps_Tang.html"
+    description: Heatmap visualization of Tang escapee methylation profiles across samples.
+
+  4.EscapeesvsNonEscapees_Tang:
+    notebook: "EMSeq/7.EscapeesExploration/4.EscapeesvsNonEscapees_Tang.html"
+    description: Comparative analysis between Tang escapee and non-escapee regions methylation profiles.
+
+  # -----------------------------
+  # 3. Mitinori Dataset (Escapees)
+  # -----------------------------
+  
+  1.EscapeeBsseqGeneration_Mitinori:
+    notebook: "EMSeq/7.EscapeesExploration/MitinoriEscapees/1.EscapeeBsseqGeneration_Mitinori.html"
+    description: Generation of bsseq object with measured CpGs within Mitinori escapee regions.
+
+  2.EscapeeAnnotationAndFunctional_Mitinori:
+    notebook: "EMSeq/7.EscapeesExploration/MitinoriEscapees/2.EscapeeAnnotationAndFunctional_Mitinori.html"
+    description: Functional annotation Mitinori escapee regions and GO of associated genes.
+
+  3.EscapeeHeatmaps_Mitinori:
+    notebook: "EMSeq/7.EscapeesExploration/MitinoriEscapees/3.EscapeeHeatmaps_Mitinori.html"
+    description: Heatmap visualization of Mitinori escapee methylation profiles across samples.
+
+  4.EscapeesvsNonEscapees_Mitinori:
+    notebook: "EMSeq/7.EscapeesExploration/MitinoriEscapees/4.EscapeesvsNonEscapees_Mitinori.html"
+    description: Comparative analysis between Mitinori escapee and non-escapee regions methylation profiles.
+
+  # -----------------------------
+  # 4. Hsu Dataset (Exploration)
+  # -----------------------------
+  
+  1.HsuExploration_WGBS:
+    notebook: "EMSeq/8.HsuExploration/1.HsuExploration_WGBS.html"
+    description: Exploration of Whole-genome bisulfite sequencing (WGBS) data from Hsu datasets.
+
+  2.HsuExploration_bACEseq:
+    notebook: "EMSeq/8.HsuExploration/2.HsuExploration_bACEseq.html"
+    description: Exploration of bACE-seq data from Hsu datasets.
+
+  3.HsuExploration_WGBSandbACEseq:
+    notebook: "EMSeq/8.HsuExploration/3.HsuExploration_WGBSandbACEseq.html"
+    description: Generation of bsseq object with WGBS and bACE-seq data from Hsu datasets.
+
+  # -----------------------------
+  # 5. Hsu–Tang Joint Escapees
+  # -----------------------------
+  
+  1.EscapeeBsseqGeneration_Hsu_Tang:
+    notebook: "EMSeq/8.HsuExploration/Escapees_Hsu_Tang/1.EscapeeBsseqGeneration_Hsu_Tang.html"
+    description: Generation of bsseq object with Hsu CpGs within Tang escapee regions.
+
+  2.EscapeeAnnotationAndFunctional_Hsu_Tang:
+    notebook: "EMSeq/8.HsuExploration/Escapees_Hsu_Tang/2.EscapeeAnnotationAndFunctional_Hsu_Tang.html"
+    description: Functional annotation Tang escapee regions in Hsu dataset and GO of associated genes.
+
+  3.EscapeeHeatmaps_Hsu_Tang:
+    notebook: "EMSeq/8.HsuExploration/Escapees_Hsu_Tang/3.EscapeeHeatmaps_Hsu_Tang.html"
+    description: Heatmap visualization of methylation patterns in Hsu–Tang escapee regions.
+
+  4.EscapeesvsNonEscapees_Hsu_Tang:
+    notebook: "EMSeq/8.HsuExploration/Escapees_Hsu_Tang/4.EscapeesvsNonEscapees_Hsu_Tang.html"
+    description: Comparative analysis between escapee and non-escapee regions in combined Hsu–Tang dataset.
+
+  # -----------------------------
+  # 6. EGCLC Passage 10 (p10)
+  # -----------------------------
+  
+  EGCLC_p10_PreliminaryExploration:
+    notebook: "EMSeq/9.EGCLC_p10/1.ExploratoryAnalysis/0.PreliminaryExploration.html"
+    description: Preliminary methylation data exploration adding EGCLC passage 10 samples.
+
+  EGCLC_p10_DMRCalling:
+    notebook: "EMSeq/9.EGCLC_p10/2.DifferentialAnalysis/DMRCalling.html"
+    description: Differentially methylated regions (DMRs) identification adding EGCLC passage 10 samples.
+
+  EGCLC_p10_DMRAnnotation:
+    notebook: "EMSeq/9.EGCLC_p10/3.DMRAnnotation/DMRAnnotation.html"
+    description: Functional and genomic annotation of identified DMRs adding EGCLC passage 10 samples.
+
+  EGCLC_p10_DMRplots:
+    notebook: "EMSeq/9.EGCLC_p10/4.DMRInterpretation/DMRplots.html"
+    description: Visualization of DMR methylation patterns across samples including EGCLC passage 10 ones.
+
+  EGCLC_p10_Heatmaps_imprinted_regions:
+    notebook: "EMSeq/9.EGCLC_p10/5.ImprintedExploration/Heatmaps_imprinted_regions.html"
+    description: Heatmap visualization of methylation in imprinted regions adding EGCLC passage 10 samples.
+
+  EGCLC_p10_DMRplots_imprinted_regions:
+    notebook: "EMSeq/9.EGCLC_p10/5.ImprintedExploration/DMRplots_imprinted_regions.html"
+    description: Visualization of methylation patterns in imprinted genomic regions adding EGCLC passage 10 samples.
+
+  EGCLC_p10_1.EscapeeBsseqGeneration:
+    notebook: "EMSeq/9.EGCLC_p10/6.EscapeesExploration/1.EscapeeBsseqGeneration.html"
+    description: Generation of bsseq object with measured CpGs within Tang escapee regions including EGCLC passage 10 samples.
+
+  EGCLC_p10_2.EscapeeAnnotationAndFunctional:
+    notebook: "EMSeq/9.EGCLC_p10/6.EscapeesExploration/2.EscapeeAnnotationAndFunctional.html"
+    description: Functional annotation Tang escapee regions and GO of associated genes (from bsseq object including EGCLC passage 10 samples).
+
+  EGCLC_p10_3.EscapeeHeatmaps:
+    notebook: "EMSeq/9.EGCLC_p10/6.EscapeesExploration/3.EscapeeHeatmaps.html"
+    description: Heatmap visualization of Mitinori escapee methylation profiles across samples including EGCLC passage 10 ones.
+
+  EGCLC_p10_4.EscapeesvsNonEscapees:
+    notebook: "EMSeq/9.EGCLC_p10/6.EscapeesExploration/4.EscapeesvsNonEscapees.html"
+    description: Comparative analysis between Tang escapee and non-escapee regions methylation profiles across samples including EGCLC passage 10 ones.
