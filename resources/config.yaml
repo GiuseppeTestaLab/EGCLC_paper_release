@@ -351,41 +351,41 @@ pages:
   # -----------------------------
   
   EGCLC_p10_PreliminaryExploration:
-    notebook: "EMSeq/9.EGCLC_p10/1.ExploratoryAnalysis/0.PreliminaryExploration.html"
+    notebook: "EMSeq/9.EGCLC_p10/1.ExploratoryAnalysis/0.PreliminaryExploration_p10.html"
     description: Preliminary methylation data exploration adding EGCLC passage 10 samples.
 
   EGCLC_p10_DMRCalling:
-    notebook: "EMSeq/9.EGCLC_p10/2.DifferentialAnalysis/DMRCalling.html"
+    notebook: "EMSeq/9.EGCLC_p10/2.DifferentialAnalysis/DMRCalling_p10.html"
     description: Differentially methylated regions (DMRs) identification adding EGCLC passage 10 samples.
 
   EGCLC_p10_DMRAnnotation:
-    notebook: "EMSeq/9.EGCLC_p10/3.DMRAnnotation/DMRAnnotation.html"
+    notebook: "EMSeq/9.EGCLC_p10/3.DMRAnnotation/DMRAnnotation_p10.html"
     description: Functional and genomic annotation of identified DMRs adding EGCLC passage 10 samples.
 
   EGCLC_p10_DMRplots:
-    notebook: "EMSeq/9.EGCLC_p10/4.DMRInterpretation/DMRplots.html"
+    notebook: "EMSeq/9.EGCLC_p10/4.DMRInterpretation/DMRplot_p10.html"
     description: Visualization of DMR methylation patterns across samples including EGCLC passage 10 ones.
 
   EGCLC_p10_Heatmaps_imprinted_regions:
-    notebook: "EMSeq/9.EGCLC_p10/5.ImprintedExploration/Heatmaps_imprinted_regions.html"
+    notebook: "EMSeq/9.EGCLC_p10/5.ImprintedExploration/Heatmaps_imprinted_regions_p10.html"
     description: Heatmap visualization of methylation in imprinted regions adding EGCLC passage 10 samples.
 
   EGCLC_p10_DMRplots_imprinted_regions:
-    notebook: "EMSeq/9.EGCLC_p10/5.ImprintedExploration/DMRplots_imprinted_regions.html"
+    notebook: "EMSeq/9.EGCLC_p10/5.ImprintedExploration/DMRplots_imprinted_regions_p10.html"
     description: Visualization of methylation patterns in imprinted genomic regions adding EGCLC passage 10 samples.
 
   EGCLC_p10_1.EscapeeBsseqGeneration:
-    notebook: "EMSeq/9.EGCLC_p10/6.EscapeesExploration/1.EscapeeBsseqGeneration.html"
+    notebook: "EMSeq/9.EGCLC_p10/6.EscapeesExploration/1.EscapeeBsseqGeneration_p10.html"
     description: Generation of bsseq object with measured CpGs within Tang escapee regions including EGCLC passage 10 samples.
 
   EGCLC_p10_2.EscapeeAnnotationAndFunctional:
-    notebook: "EMSeq/9.EGCLC_p10/6.EscapeesExploration/2.EscapeeAnnotationAndFunctional.html"
+    notebook: "EMSeq/9.EGCLC_p10/6.EscapeesExploration/2.EscapeeAnnotationAndFunctional_p10.html"
     description: Functional annotation Tang escapee regions and GO of associated genes (from bsseq object including EGCLC passage 10 samples).
 
   EGCLC_p10_3.EscapeeHeatmaps:
-    notebook: "EMSeq/9.EGCLC_p10/6.EscapeesExploration/3.EscapeeHeatmaps.html"
+    notebook: "EMSeq/9.EGCLC_p10/6.EscapeesExploration/3.EscapeeHeatmaps_p10.html"
     description: Heatmap visualization of Mitinori escapee methylation profiles across samples including EGCLC passage 10 ones.
 
   EGCLC_p10_4.EscapeesvsNonEscapees:
-    notebook: "EMSeq/9.EGCLC_p10/6.EscapeesExploration/4.EscapeesvsNonEscapees.html"
+    notebook: "EMSeq/9.EGCLC_p10/6.EscapeesExploration/4.EscapeesvsNonEscapees_p10.html"
     description: Comparative analysis between Tang escapee and non-escapee regions methylation profiles across samples including EGCLC passage 10 ones.
