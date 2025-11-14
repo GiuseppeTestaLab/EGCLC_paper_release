@@ -12,5 +12,6 @@ This repository contains all the code used to analyze the single-cell (scRNAseq)
 Docker images: 
 - for most of the scRNAseq analyses (notebooks in [scRNASeq folder](scRNASeq) from 00 to 05) can be retrieved via `docker pull alessiavalenti/transgenerationalhub:transgenerational-1.1.7`.
 - for the analyses of DNA methylation data (Rmarkdown in [EMSeq folder](EMSeq)) can be retrieved via `docker pull testalab/downstream:Transgenerational-1.1.5`.
+- for the analysis of bulkRNAseq data, R and package versions are available for reproducibility at the end of the html available in [bulkRNASeq folder](bulkRNASeq).
 
 An html version of the notebooks is accessible [here](https://GiuseppeTestaLab.github.io/EGCLC_paper_release/).
