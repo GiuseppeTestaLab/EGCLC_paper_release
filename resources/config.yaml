@@ -363,7 +363,7 @@ pages:
     description: Functional and genomic annotation of identified DMRs adding EGCLC passage 10 samples.
 
   EGCLC_p10_DMRplots:
-    notebook: "EMSeq/9.EGCLC_p10/4.DMRInterpretation/DMRplot_p10.html"
+    notebook: "EMSeq/9.EGCLC_p10/4.DMRInterpretation/DMRplots_p10.html"
     description: Visualization of DMR methylation patterns across samples including EGCLC passage 10 ones.
 
   EGCLC_p10_Heatmaps_imprinted_regions:
